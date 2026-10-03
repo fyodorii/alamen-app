@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "شبكة الأمين السلفية",
+    "slug": "alamen-salafi",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0f5f6e",
+    "ios": {
+      "bundleIdentifier": "com.alamen.salafi",
+      "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ar",
+        "CFBundleLocalizations": [
+          "ar"
+        ],
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoadsInWebContent": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.alamen.salafi",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f5f6e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sharing",
+      "expo-web-browser",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f5f6e",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
+    ]
+  }
+}

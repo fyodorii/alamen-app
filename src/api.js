@@ -1,0 +1,190 @@
+// Reads the vBulletin 4 forum at al-amen.com and turns its pages into plain data.
+import { decodeCp1256 } from './cp1256';
+
+export const BASE_URL = 'https://www.al-amen.com/vb/';
+export const POSTS_PER_PAGE = 40;
+
+async function fetchText(path) {
+  const res = await fetch(BASE_URL + path, {
+    headers: { 'User-Agent': 'AlAmenApp/1.0 (iOS)', Accept: 'text/html,application/xml' },
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return decodeCp1256(await res.arrayBuffer());
+}
+
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+export function decodeEntities(s) {
+  return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return isNaN(n) ? m : String.fromCodePoint(n);
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  });
+}
+
+export function stripTags(s) {
+  return decodeEntities(s.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n')
+    .trim();
+}
+
+// vBulletin appends a session id (&s=...) to links for guests; drop it.
+function cleanHref(href) {
+  return decodeEntities(href).replace(/[?&]s=[0-9a-f]{32}/, '');
+}
+
+function parseForumRows(html) {
+  const forums = [];
+  const parts = html.split(/<li id="forum(?=\d+")/).slice(1);
+  for (const part of parts) {
+    const id = part.match(/^(\d+)/)[1];
+    const title = part.match(/class="forumtitle"><a [^>]*>([\s\S]*?)<\/a>/);
+    if (!title) continue;
+    const desc = part.match(/<p class="forumdescription">([\s\S]*?)<\/p>/);
+    const threads = part.match(/المواضيع:\s*([\d,]+)/);
+    const posts = part.match(/المشاركات:\s*([\d,]+)/);
+    const subforums = [];
+    const subRe = /<li class="subforum">[\s\S]*?forumdisplay\.php\?f=(\d+)[^>]*>([\s\S]*?)<\/a>/g;
+    let m;
+    while ((m = subRe.exec(part))) subforums.push({ id: m[1], title: stripTags(m[2]) });
+    forums.push({
+      id,
+      title: stripTags(title[1]),
+      description: desc ? stripTags(desc[1]) : '',
+      threads: threads ? threads[1] : null,
+      posts: posts ? posts[1] : null,
+      subforums,
+    });
+  }
+  return forums;
+}
+
+// Home page: categories, each with its forums.
+export async function getForumIndex() {
+  const html = await fetchText('index.php');
+  const sections = [];
+  const cats = html.split(/<li class="forumbit_nopost[^"]*" id="cat/).slice(1);
+  for (const cat of cats) {
+    const id = cat.match(/^(\d+)/)[1];
+    const title = cat.match(/class="forumtitle"><a [^>]*>([\s\S]*?)<\/a>/);
+    sections.push({ id, title: title ? stripTags(title[1]) : '', forums: parseForumRows(cat) });
+  }
+  return sections;
+}
+
+function lastPage(html, pattern) {
+  let max = 1;
+  const re = new RegExp(pattern + '(\\d+)', 'g');
+  let m;
+  while ((m = re.exec(html))) max = Math.max(max, parseInt(m[1], 10));
+  return max;
+}
+
+// One page of a forum: its sub-forums (page 1 only) and its threads.
+export async function getForum(forumId, page = 1) {
+  const html = await fetchText(`forumdisplay.php?f=${forumId}&page=${page}`);
+  const title = html.match(/<title>([\s\S]*?)<\/title>/);
+  const threads = [];
+  const parts = html.split(/<li class="threadbit/).slice(1);
+  for (const part of parts) {
+    const t = part.match(/id="thread_title_(\d+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!t) continue;
+    const author = part.match(/class="username understate" title="[^"]*? on ([^"]+)">([\s\S]*?)<\/a>/);
+    const replies = part.match(/مشاركات:\s*([\d,]+)/);
+    const views = part.match(/المشاهدات:\s*([\d,]+)/);
+    const preview = part.match(/<div class="threadinfo" title="([^"]*)"/);
+    threads.push({
+      id: t[1],
+      title: stripTags(t[2]),
+      sticky: /class="rating\d+ sticky"/.test(part),
+      author: author ? stripTags(author[2]) : '',
+      date: author ? author[1] : '',
+      replies: replies ? replies[1] : '0',
+      views: views ? views[1] : '',
+      preview: preview ? stripTags(preview[1]) : '',
+    });
+  }
+  // Only sub-forums of this forum appear as forum rows on its page.
+  const subforums = page === 1 ? parseForumRows(html) : [];
+  return {
+    title: title ? stripTags(title[1]).replace(/\s*-\s*شبكة الأمين السلفية\s*$/, '') : '',
+    subforums,
+    threads,
+    lastPage: lastPage(html, `forumdisplay\\.php\\?f=${forumId}[^"]*?&amp;page=`),
+  };
+}
+
+// One page of a thread, using vBulletin's lightweight print view.
+export async function getThread(threadId, page = 1) {
+  const html = await fetchText(`printthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}&page=${page}`);
+  const title = html.match(/<div id="pagetitle">\s*<h1>(?:<a [^>]*>)?([\s\S]*?)<\/(?:a|h1)>/);
+  const posts = [];
+  const parts = html.split(/<li class="postbit blockbody" id="post_/).slice(1);
+  for (const part of parts) {
+    const date = part.match(/<div class="datetime">([\s\S]*?)<\/div>/);
+    const user = part.match(/<span class="username">([\s\S]*?)<\/span>/);
+    const start = part.indexOf('<div class="content">');
+    let content = '';
+    if (start >= 0) {
+      const body = part.slice(start + '<div class="content">'.length);
+      content = body.slice(0, body.lastIndexOf('</div>')).trim();
+    }
+    posts.push({
+      author: user ? stripTags(user[1]) : '',
+      date: date ? stripTags(date[1]) : '',
+      html: content,
+    });
+  }
+  if (!posts.length) throw new Error('لم يتم العثور على الموضوع أو أنه يحتاج إلى تسجيل الدخول');
+  return {
+    title: title ? stripTags(title[1]) : '',
+    posts,
+    lastPage: lastPage(html, `printthread\\.php\\?t=${threadId}[^"]*?&amp;page=`),
+  };
+}
+
+// Newest activity across the whole forum (vBulletin RSS 2 feed).
+export async function getLatest() {
+  const xml = await fetchText('external.php?type=RSS2');
+  const items = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  const field = (s, tag) => {
+    const f = s.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
+    if (!f) return '';
+    return f[1].replace(/^<!\[CDATA\[|\]\]>$/g, '');
+  };
+  while ((m = re.exec(xml))) {
+    const s = m[1];
+    const guid = field(s, 'guid');
+    const id = (guid.match(/t=(\d+)/) || [])[1];
+    if (!id) continue;
+    items.push({
+      id,
+      title: stripTags(field(s, 'title')),
+      author: stripTags(field(s, 'dc:creator')),
+      forum: stripTags(field(s, 'category')),
+      date: new Date(field(s, 'pubDate')),
+      preview: stripTags(field(s, 'description')),
+    });
+  }
+  return items;
+}
+
+export function threadUrl(threadId) {
+  return `${BASE_URL}showthread.php?t=${threadId}`;
+}
+
+// Map a link inside a post to an in-app destination, if it points at this forum.
+export function routeForLink(url) {
+  if (!/^https?:\/\/(www\.)?al-amen\.com\/vb\//i.test(url)) return null;
+  const clean = cleanHref(url);
+  const t = clean.match(/showthread\.php\?(?:[^#]*&)?t=(\d+)/) || clean.match(/showthread\.php\/(\d+)/);
+  if (t) return { screen: 'Thread', params: { id: t[1] } };
+  const f = clean.match(/forumdisplay\.php\?(?:[^#]*&)?f=(\d+)/) || clean.match(/forumdisplay\.php\/(\d+)/);
+  if (f) return { screen: 'Forum', params: { id: f[1] } };
+  return null;
+}
