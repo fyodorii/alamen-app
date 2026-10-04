@@ -1,12 +1,16 @@
 // Reads the vBulletin 4 forum at al-amen.com and turns its pages into plain data.
+import { Platform } from 'react-native';
 import { decodeCp1256 } from './cp1256';
 
-export const BASE_URL = 'https://www.al-amen.com/vb/';
+// The web build is hosted on the forum's own domain, so it reads the forum from
+// the same origin (browsers would block cross-site reads).
+export const BASE_URL =
+  Platform.OS === 'web' ? `${window.location.origin}/vb/` : 'https://www.al-amen.com/vb/';
 export const POSTS_PER_PAGE = 40;
 
 async function fetchText(path) {
   const res = await fetch(BASE_URL + path, {
-    headers: { 'User-Agent': 'AlAmenApp/1.0 (iOS)', Accept: 'text/html,application/xml' },
+    headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return decodeCp1256(await res.arrayBuffer());
@@ -85,7 +89,8 @@ function lastPage(html, pattern) {
 
 // One page of a forum: its sub-forums (page 1 only) and its threads.
 export async function getForum(forumId, page = 1) {
-  const html = await fetchText(`forumdisplay.php?f=${forumId}&page=${page}`);
+  // vBulletin redirects "&page=1" to the bare URL, so only send it for later pages.
+  const html = await fetchText(`forumdisplay.php?f=${forumId}${page > 1 ? `&page=${page}` : ''}`);
   const title = html.match(/<title>([\s\S]*?)<\/title>/);
   const threads = [];
   const parts = html.split(/<li class="threadbit/).slice(1);
@@ -129,8 +134,12 @@ export async function getThread(threadId, page = 1) {
     const start = part.indexOf('<div class="content">');
     let content = '';
     if (start >= 0) {
+      // A post ends at its own "</div></li>"; the last post is followed by the
+      // forum footer (clock and copyright), which must not leak into it.
       const body = part.slice(start + '<div class="content">'.length);
-      content = body.slice(0, body.lastIndexOf('</div>')).trim();
+      let end = -1;
+      for (const m of body.matchAll(/<\/div>\s*<\/li>/g)) end = m.index;
+      content = (end >= 0 ? body.slice(0, end) : body).trim();
     }
     posts.push({
       author: user ? stripTags(user[1]) : '',
@@ -174,13 +183,24 @@ export async function getLatest() {
   return items;
 }
 
+const MONTHS = { Jan: 'يناير', Feb: 'فبراير', Mar: 'مارس', Apr: 'أبريل', May: 'مايو', Jun: 'يونيو',
+  Jul: 'يوليو', Aug: 'أغسطس', Sep: 'سبتمبر', Oct: 'أكتوبر', Nov: 'نوفمبر', Dec: 'ديسمبر' };
+
+// "19-Jun-2011, 05:00 PM" -> "19 يونيو 2011 - 05:00 م"; anything else is returned as-is.
+export function formatForumDate(s) {
+  if (!s) return '';
+  const m = s.match(/(\d{1,2})-([A-Z][a-z]{2})-(\d{4}),?\s*(\d{1,2}:\d{2})\s*(AM|PM)?/);
+  if (m && MONTHS[m[2]]) return `${+m[1]} ${MONTHS[m[2]]} ${m[3]} - ${m[4]}${m[5] ? (m[5] === 'AM' ? ' ص' : ' م') : ''}`;
+  return s.replace(/Today/, 'اليوم').replace(/Yesterday/, 'أمس').replace(/AM/, 'ص').replace(/PM/, 'م');
+}
+
 export function threadUrl(threadId) {
   return `${BASE_URL}showthread.php?t=${threadId}`;
 }
 
 // Map a link inside a post to an in-app destination, if it points at this forum.
 export function routeForLink(url) {
-  if (!/^https?:\/\/(www\.)?al-amen\.com\/vb\//i.test(url)) return null;
+  if (!/^https?:\/\/(www\.)?al-amen\.com\/vb\//i.test(url) && !url.startsWith(BASE_URL)) return null;
   const clean = cleanHref(url);
   const t = clean.match(/showthread\.php\?(?:[^#]*&)?t=(\d+)/) || clean.match(/showthread\.php\/(\d+)/);
   if (t) return { screen: 'Thread', params: { id: t[1] } };

@@ -8,7 +8,13 @@ const SETTINGS_KEY = 'settings.v1';
 const SAVED_INDEX_KEY = 'saved.index.v1';
 const savedKey = (id) => `saved.thread.${id}`;
 
-const DEFAULT_SETTINGS = { fontScale: 1, theme: 'system' };
+const DEFAULT_SETTINGS = {
+  fontScale: 1,
+  theme: 'system',
+  boldText: false, // show all reading text in Amiri Bold
+  notifyNew: true, // alert when new topics are posted
+  salawat: true, // remind to send blessings on the Prophet ﷺ every 15 minutes
+};
 
 const AppContext = createContext(null);
 

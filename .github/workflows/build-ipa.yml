@@ -2,10 +2,9 @@
 # Sideloadly signs it with a free Apple ID when installing it on the iPhone.
 name: Build iPhone app (unsigned IPA)
 
+# Run by hand from the Actions tab (Run workflow), so routine pushes don't use macOS minutes.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
 
 jobs:
   build:
