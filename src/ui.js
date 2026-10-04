@@ -49,7 +49,11 @@ export function useLoader(load, deps, cacheKey) {
   useEffect(() => {
     if (storageKey) {
       AsyncStorage.getItem(storageKey)
-        .then((raw) => raw && setData((current) => current ?? JSON.parse(raw)))
+        .then((raw) => {
+          const cached = raw && JSON.parse(raw);
+          // An empty list is never worth showing (left over from a failed read).
+          if (cached && !(Array.isArray(cached) && !cached.length)) setData((current) => current ?? cached);
+        })
         .catch(() => {});
     }
     run(false);

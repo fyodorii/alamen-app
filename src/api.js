@@ -11,9 +11,32 @@ export const POSTS_PER_PAGE = 40;
 async function fetchText(path) {
   const res = await fetch(BASE_URL + path, {
     headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
+    // No forum cookies in or out: the app reads as a guest, and the style choice
+    // below must not stick to the visitor's normal browsing of the forum.
+    credentials: Platform.OS === 'web' ? 'omit' : undefined,
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return decodeCp1256(await res.arrayBuffer());
+}
+
+// vBulletin gives phones its "mobile style", whose pages the app cannot read, so ask
+// for the full site's style. 108 is the id behind the forum's own "كامل الموقع" link;
+// if it ever changes, that link in the mobile page gives the new one.
+let fullSiteStyle = 108;
+const isMobileStyle = (html) => html.includes('jquery.mobile');
+
+async function fetchPage(path) {
+  const withStyle = () => `${path}${path.includes('?') ? '&' : '?'}styleid=${fullSiteStyle}`;
+  let html = await fetchText(withStyle());
+  if (isMobileStyle(html)) {
+    const link = html.match(/href="[^"]*[?&]styleid=(\d+)[^"]*"[^>]*class="fullsitelink"/);
+    if (link && +link[1] !== fullSiteStyle) {
+      fullSiteStyle = +link[1];
+      html = await fetchText(withStyle());
+    }
+    if (isMobileStyle(html)) throw new Error('تعذّرت قراءة صفحة المنتدى. حاول لاحقاً.');
+  }
+  return html;
 }
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
@@ -68,7 +91,7 @@ function parseForumRows(html) {
 
 // Home page: categories, each with its forums.
 export async function getForumIndex() {
-  const html = await fetchText('index.php');
+  const html = await fetchPage('index.php');
   const sections = [];
   const cats = html.split(/<li class="forumbit_nopost[^"]*" id="cat/).slice(1);
   for (const cat of cats) {
@@ -76,6 +99,8 @@ export async function getForumIndex() {
     const title = cat.match(/class="forumtitle"><a [^>]*>([\s\S]*?)<\/a>/);
     sections.push({ id, title: title ? stripTags(title[1]) : '', forums: parseForumRows(cat) });
   }
+  // An empty list means the page was not the one expected; say so instead of showing nothing.
+  if (!sections.length) throw new Error('تعذّرت قراءة أقسام المنتدى. حاول لاحقاً.');
   return sections;
 }
 
@@ -90,7 +115,7 @@ function lastPage(html, pattern) {
 // One page of a forum: its sub-forums (page 1 only) and its threads.
 export async function getForum(forumId, page = 1) {
   // vBulletin redirects "&page=1" to the bare URL, so only send it for later pages.
-  const html = await fetchText(`forumdisplay.php?f=${forumId}${page > 1 ? `&page=${page}` : ''}`);
+  const html = await fetchPage(`forumdisplay.php?f=${forumId}${page > 1 ? `&page=${page}` : ''}`);
   const title = html.match(/<title>([\s\S]*?)<\/title>/);
   const threads = [];
   const parts = html.split(/<li class="threadbit/).slice(1);
@@ -124,7 +149,7 @@ export async function getForum(forumId, page = 1) {
 
 // One page of a thread, using vBulletin's lightweight print view.
 export async function getThread(threadId, page = 1) {
-  const html = await fetchText(`printthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}&page=${page}`);
+  const html = await fetchPage(`printthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}&page=${page}`);
   const title = html.match(/<div id="pagetitle">\s*<h1>(?:<a [^>]*>)?([\s\S]*?)<\/(?:a|h1)>/);
   const posts = [];
   const parts = html.split(/<li class="postbit blockbody" id="post_/).slice(1);

@@ -1,8 +1,8 @@
 // Service worker for the home-screen web app:
-// - keeps the app's files on the device so it opens instantly (updates arrive in the background),
+// - keeps the app's files on the device so it opens fast, even offline,
 // - shows push notifications sent by push/cron.php and opens the thread when one is tapped.
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const PAGE_CACHE = `alamen-page-${VERSION}`;
 const FILE_CACHE = `alamen-files-${VERSION}`;
 const SCOPE = self.registration.scope; // https://…/app/
@@ -39,14 +39,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// The app page: show the saved copy at once and refresh it for next time.
+// The app page: prefer the server's copy so updates show up on the next open, but
+// never wait long for it — after a short timeout (or offline) use the saved copy.
+const PAGE_TIMEOUT_MS = 2500;
+
 async function appPage(event) {
   const cache = await caches.open(PAGE_CACHE);
-  const saved = await cache.match(SCOPE);
   const fresh = fetch(SCOPE, { cache: 'no-cache' }).then((res) => {
     if (res.ok) cache.put(SCOPE, res.clone());
     return res;
   });
+  const timeout = new Promise((resolve) => setTimeout(resolve, PAGE_TIMEOUT_MS));
+  try {
+    const res = await Promise.race([fresh, timeout]);
+    if (res && res.ok) return res;
+  } catch (e) {
+    // Offline: fall through to the saved copy.
+  }
+  const saved = await cache.match(SCOPE);
   if (saved) {
     event.waitUntil(fresh.catch(() => {}));
     return saved;
