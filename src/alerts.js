@@ -133,7 +133,11 @@ function Banner({ banner, onClose, onPress }) {
 
   useEffect(() => {
     if (!banner) {
-      Animated.timing(slide, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => setShown(null));
+      // Only clear once the slide-out really finishes; a new banner interrupts it
+      // (finished === false) and must stay on screen.
+      Animated.timing(slide, { toValue: 0, duration: 250, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setShown(null);
+      });
       return;
     }
     setShown(banner);

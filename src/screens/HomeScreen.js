@@ -39,7 +39,7 @@ function Clock() {
       <View style={styles.timeRow}>
         <Text style={[font(15, bold), styles.period, { color: colors.gold }]}>{h < 12 ? 'صباحاً' : 'مساءً'}</Text>
         <Text style={[font(54, bold), styles.time]}>{`${pad(h % 12 || 12)}:${pad(now.getMinutes())}`}</Text>
-        <Text style={[font(22, bold), styles.seconds, { color: colors.gold }]}>{pad(now.getSeconds())}</Text>
+        <Text style={[font(22, bold), styles.seconds, { color: colors.gold }]}>{`:${pad(now.getSeconds())}`}</Text>
       </View>
       <Text style={[font(16, { bold: settings.boldText }), styles.date]}>{gregorian}</Text>
       {hijri ? <Text style={[font(16, { bold: settings.boldText }), styles.date, { color: colors.gold }]}>{hijri}</Text> : null}

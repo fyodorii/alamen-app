@@ -54,7 +54,7 @@ function ToggleRow({ icon, label, hint, value, onChange }) {
         <Txt size={18}>{label}</Txt>
         {hint ? <Txt size={14} color={colors.muted}>{hint}</Txt> : null}
       </View>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.accent, false: colors.border }} thumbColor="#fff" />
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.accent, false: colors.border }} thumbColor="#fff" activeThumbColor="#fff" />
     </View>
   );
 }
