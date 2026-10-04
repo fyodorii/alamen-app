@@ -1,0 +1,192 @@
+// In-app alerts: a banner for newly posted topics (checked every few minutes while
+// the app is open), a badge on the "الجديد" tab, and the 15-minute salawat reminder.
+// When device notifications are on, the reminder comes from them instead.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, AppState, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { getLatest } from './api';
+import { getPushState } from './push';
+import { SALAWAT, SALAWAT_TITLE } from './salawat';
+import { useApp } from './store';
+import { Txt } from './ui';
+
+const NEWS_POLL_MS = 3 * 60 * 1000;
+const SALAWAT_EVERY_MS = 15 * 60 * 1000;
+const FIRST_SALAWAT_MS = 60 * 1000;
+const LAST_NOTIFIED_KEY = 'news.lastNotifiedId';
+const LAST_SEEN_KEY = 'news.lastSeenId';
+
+const AlertsContext = createContext(null);
+export const useAlerts = () => useContext(AlertsContext);
+
+const maxId = (items) => Math.max(0, ...items.map((i) => +i.id));
+
+export function AlertsProvider({ onOpenThread, children }) {
+  const { ready, settings } = useApp();
+  const [banner, setBanner] = useState(null);
+  const [newCount, setNewCount] = useState(0);
+  const [pushActive, setPushActive] = useState(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const refreshPush = useCallback(async () => {
+    setPushActive(await getPushState().catch(() => false));
+  }, []);
+
+  const checkNews = useCallback(async () => {
+    let items;
+    try {
+      items = await getLatest();
+    } catch {
+      return;
+    }
+    if (!items.length) return;
+    const newest = maxId(items);
+    const stored = await AsyncStorage.multiGet([LAST_NOTIFIED_KEY, LAST_SEEN_KEY]);
+    const lastNotified = +stored[0][1] || 0;
+    const lastSeen = +stored[1][1] || 0;
+    if (!lastNotified) {
+      // First run: everything already on the forum counts as seen.
+      await AsyncStorage.multiSet([[LAST_NOTIFIED_KEY, String(newest)], [LAST_SEEN_KEY, String(newest)]]);
+      return;
+    }
+    setNewCount(items.filter((i) => +i.id > lastSeen).length);
+    const fresh = items.filter((i) => +i.id > lastNotified);
+    if (!fresh.length) return;
+    await AsyncStorage.setItem(LAST_NOTIFIED_KEY, String(newest));
+    if (settingsRef.current.notifyNew) {
+      setBanner({
+        kind: 'news',
+        title: fresh.length > 1 ? `${fresh.length} مواضيع جديدة` : `موضوع جديد · ${fresh[0].forum}`,
+        body: fresh[0].title,
+        threadId: fresh[0].id,
+      });
+    }
+  }, []);
+
+  const markLatestSeen = useCallback((items) => {
+    const newest = String(maxId(items));
+    AsyncStorage.multiSet([[LAST_SEEN_KEY, newest], [LAST_NOTIFIED_KEY, newest]]).catch(() => {});
+    setNewCount(0);
+  }, []);
+
+  // New topics: check now, every few minutes, and whenever the app comes back to the foreground.
+  useEffect(() => {
+    if (!ready) return;
+    refreshPush();
+    checkNews();
+    const timer = setInterval(checkNews, NEWS_POLL_MS);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') {
+        checkNews();
+        refreshPush();
+      }
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [ready, checkNews, refreshPush]);
+
+  // Salawat reminder while the app is open (device notifications cover it otherwise).
+  useEffect(() => {
+    if (!ready || !settings.salawat || pushActive) return;
+    let i = 0;
+    const show = () => {
+      setBanner({ kind: 'salawat', title: SALAWAT_TITLE, body: SALAWAT[i++ % SALAWAT.length] });
+    };
+    const first = setTimeout(show, FIRST_SALAWAT_MS);
+    const every = setInterval(show, SALAWAT_EVERY_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, [ready, settings.salawat, pushActive]);
+
+  const value = useMemo(
+    () => ({ newCount, markLatestSeen, pushActive, refreshPush, showBanner: setBanner }),
+    [newCount, markLatestSeen, pushActive, refreshPush]
+  );
+
+  return (
+    <AlertsContext.Provider value={value}>
+      {children}
+      <Banner
+        banner={banner}
+        onClose={() => setBanner(null)}
+        onPress={() => {
+          if (banner?.threadId) onOpenThread(banner.threadId);
+          setBanner(null);
+        }}
+      />
+    </AlertsContext.Provider>
+  );
+}
+
+function Banner({ banner, onClose, onPress }) {
+  const { colors } = useApp();
+  const insets = useSafeAreaInsets();
+  const slide = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState(null);
+
+  useEffect(() => {
+    if (!banner) {
+      Animated.timing(slide, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => setShown(null));
+      return;
+    }
+    setShown(banner);
+    Animated.spring(slide, { toValue: 1, useNativeDriver: true, friction: 8 }).start();
+    const hide = setTimeout(onClose, banner.kind === 'salawat' ? 9000 : 12000);
+    return () => clearTimeout(hide);
+  }, [banner]);
+
+  if (!shown) return null;
+  const salawat = shown.kind === 'salawat';
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        styles.wrap,
+        { top: insets.top + 8, opacity: slide, transform: [{ translateY: slide.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] }) }] },
+      ]}
+    >
+      <Pressable
+        onPress={onPress}
+        style={[styles.card, { backgroundColor: colors.header, borderColor: salawat ? colors.gold : colors.accent }]}
+      >
+        <View style={[styles.icon, { backgroundColor: salawat ? colors.gold : colors.accent }]}>
+          <Ionicons name={salawat ? 'sparkles' : 'notifications'} size={20} color="#fff" />
+        </View>
+        <View style={styles.flex}>
+          <Txt size={14} bold color={salawat ? colors.gold : '#bcd6f2'}>{shown.title}</Txt>
+          <Txt size={salawat ? 18 : 17} bold color="#fff" numberOfLines={3}>{shown.body}</Txt>
+        </View>
+        <Pressable hitSlop={12} onPress={onClose} accessibilityLabel="إغلاق">
+          <Ionicons name="close" size={20} color="rgba(255,255,255,0.7)" />
+        </Pressable>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  wrap: { position: 'absolute', left: 10, right: 10, zIndex: 1000 },
+  card: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+});

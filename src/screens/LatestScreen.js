@@ -1,7 +1,10 @@
+import { useCallback } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getLatest } from '../api';
+import { useAlerts } from '../alerts';
 import { useApp } from '../store';
-import { Card, Empty, ErrorView, Loading, useLoader } from '../ui';
+import { Empty, ErrorView, Loading, ThreadCard, useLoader } from '../ui';
 
 function timeAgo(date) {
   const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
@@ -15,7 +18,15 @@ function timeAgo(date) {
 
 export default function LatestScreen({ navigation }) {
   const { colors } = useApp();
+  const { markLatestSeen } = useAlerts();
   const { data, error, refreshing, reload, retry } = useLoader(getLatest, []);
+
+  // Visiting this tab clears the "new topics" badge.
+  useFocusEffect(
+    useCallback(() => {
+      if (data?.length) markLatestSeen(data);
+    }, [data, markLatestSeen])
+  );
 
   if (error && !data) return <ErrorView error={error} onRetry={retry} />;
   if (!data) return <Loading />;
@@ -29,11 +40,12 @@ export default function LatestScreen({ navigation }) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={colors.primary} />}
       ListEmptyComponent={<Empty>لا توجد مشاركات جديدة حالياً</Empty>}
       renderItem={({ item }) => (
-        <Card
+        <ThreadCard
           badge={item.forum}
           title={item.title}
-          subtitle={item.preview}
-          meta={`${item.author}  ·  ${timeAgo(item.date)}`}
+          preview={item.preview}
+          author={item.author}
+          when={timeAgo(item.date)}
           onPress={() => navigation.navigate('Thread', { id: item.id, title: item.title })}
         />
       )}

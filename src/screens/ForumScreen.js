@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
-import { getForum } from '../api';
+import { formatForumDate, getForum } from '../api';
 import { useApp } from '../store';
-import { Card, Empty, ErrorView, Loading, SectionHeader, useLoader } from '../ui';
+import { Empty, ErrorView, ForumCard, Loading, SectionHeader, ThreadCard, useLoader } from '../ui';
 
 export default function ForumScreen({ navigation, route }) {
   const { id } = route.params;
@@ -35,16 +35,13 @@ export default function ForumScreen({ navigation, route }) {
     setLoadingMore(false);
   };
 
+  const openForum = (f) => navigation.push('Forum', { id: f.id, title: f.title });
+
   const header = data.subforums.length ? (
     <View>
       <SectionHeader>الأقسام الفرعية</SectionHeader>
       {data.subforums.map((f) => (
-        <Card
-          key={f.id}
-          title={f.title}
-          subtitle={f.description}
-          onPress={() => navigation.push('Forum', { id: f.id, title: f.title })}
-        />
+        <ForumCard key={f.id} forum={f} onPress={() => openForum(f)} onSubPress={openForum} />
       ))}
       <SectionHeader>المواضيع</SectionHeader>
     </View>
@@ -63,11 +60,14 @@ export default function ForumScreen({ navigation, route }) {
       onEndReachedThreshold={0.5}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={colors.primary} />}
       renderItem={({ item }) => (
-        <Card
-          badge={item.sticky ? 'موضوع مثبت' : null}
+        <ThreadCard
+          sticky={item.sticky}
           title={item.title}
-          subtitle={item.preview}
-          meta={`${item.author}  ·  الردود: ${item.replies}${item.views ? `  ·  المشاهدات: ${item.views}` : ''}`}
+          preview={item.preview}
+          author={item.author}
+          when={formatForumDate(item.date)}
+          replies={item.replies}
+          views={item.views}
           onPress={() => navigation.navigate('Thread', { id: item.id, title: item.title })}
         />
       )}

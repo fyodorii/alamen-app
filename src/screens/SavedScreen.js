@@ -1,6 +1,6 @@
-import { Alert, FlatList } from 'react-native';
+import { FlatList } from 'react-native';
 import { useApp } from '../store';
-import { Card, Empty } from '../ui';
+import { Empty, ThreadCard, confirmDelete } from '../ui';
 
 export default function SavedScreen({ navigation }) {
   const { colors, saved, removeThread } = useApp();
@@ -12,21 +12,17 @@ export default function SavedScreen({ navigation }) {
       data={saved}
       keyExtractor={(t) => t.id}
       ListEmptyComponent={
-        <Empty>
+        <Empty icon="bookmark-outline">
           لا توجد مواضيع محفوظة بعد.{'\n'}اضغط على أيقونة الحفظ أعلى أي موضوع لتقرأه لاحقاً حتى دون اتصال بالإنترنت.
         </Empty>
       }
       renderItem={({ item }) => (
-        <Card
+        <ThreadCard
           title={item.title}
-          meta={`${item.author}  ·  حُفظ ${new Date(item.savedAt).toLocaleDateString('ar')}`}
+          author={item.author}
+          when={`حُفظ ${new Date(item.savedAt).toLocaleDateString('ar-EG-u-nu-latn')} · اضغط مطولاً للحذف`}
           onPress={() => navigation.navigate('Thread', { id: item.id, title: item.title, offline: true })}
-          onLongPress={() =>
-            Alert.alert('حذف من المحفوظات؟', item.title, [
-              { text: 'إلغاء', style: 'cancel' },
-              { text: 'حذف', style: 'destructive', onPress: () => removeThread(item.id) },
-            ])
-          }
+          onLongPress={() => confirmDelete('حذف من المحفوظات؟', item.title, () => removeThread(item.id))}
         />
       )}
     />

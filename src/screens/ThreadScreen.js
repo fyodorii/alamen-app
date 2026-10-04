@@ -1,27 +1,27 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { BASE_URL, getThread, routeForLink, threadUrl } from '../api';
 import { CONTACT_EMAIL } from '../config';
 import { useApp } from '../store';
 import { buildThreadHtml } from '../threadHtml';
-import { ErrorView, Loading } from '../ui';
+import HtmlView from '../HtmlView';
+import ShareSheet from '../ShareSheet';
+import { ErrorView, Loading, notify } from '../ui';
 
 // Offline copies keep at most this many pages so storage stays small.
 const MAX_SAVED_PAGES = 10;
 
 export default function ThreadScreen({ navigation, route }) {
   const { id } = route.params;
-  const app = useApp();
-  const { colors, dark, settings, isSaved, saveThread, removeThread, loadSavedThread } = app;
+  const { colors, dark, settings, isSaved, saveThread, removeThread, loadSavedThread } = useApp();
   const [page, setPage] = useState(1);
   const [thread, setThread] = useState(null);
   const [offline, setOffline] = useState(!!route.params.offline);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  const webRef = useRef(null);
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -63,22 +63,17 @@ export default function ThreadScreen({ navigation, route }) {
       for (let p = 2; p <= last; p++) posts.push(...(await getThread(id, p)).posts);
       await saveThread(id, { title: first.title, posts, lastPage: 1 });
     } catch {
-      Alert.alert('تعذّر الحفظ', 'تحقق من اتصالك بالإنترنت ثم أعد المحاولة.');
+      notify('تعذّر الحفظ', 'تحقق من اتصالك بالإنترنت ثم أعد المحاولة.');
     }
     setSaving(false);
   }, [saved, id, page, thread, offline, saveThread, removeThread]);
-
-  const share = useCallback(() => {
-    const title = thread?.title || route.params.title || '';
-    Share.share({ message: `${title}\n${threadUrl(id)}`, url: threadUrl(id) });
-  }, [thread, id, route.params.title]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.actions}>
-          <Pressable hitSlop={10} onPress={share} accessibilityLabel="مشاركة">
-            <Ionicons name="share-outline" size={23} color={colors.headerText} />
+          <Pressable hitSlop={10} onPress={() => setSharing(true)} accessibilityLabel="مشاركة">
+            <Ionicons name="share-social-outline" size={23} color={colors.headerText} />
           </Pressable>
           <Pressable hitSlop={10} onPress={toggleSave} disabled={saving} accessibilityLabel={saved ? 'إزالة من المحفوظات' : 'حفظ'}>
             <Ionicons name={saving ? 'hourglass-outline' : saved ? 'bookmark' : 'bookmark-outline'} size={23} color={colors.headerText} />
@@ -89,17 +84,34 @@ export default function ThreadScreen({ navigation, route }) {
         </View>
       ),
     });
-  }, [navigation, share, toggleSave, saving, saved, colors, id]);
+  }, [navigation, toggleSave, saving, saved, colors, id]);
 
   const html = useMemo(
-    () => thread && buildThreadHtml({ thread, page, colors, dark, fontScale: settings.fontScale, offline }),
-    [thread, page, colors, dark, settings.fontScale, offline]
+    () =>
+      thread &&
+      buildThreadHtml({
+        thread,
+        page,
+        colors,
+        dark,
+        fontScale: settings.fontScale,
+        boldText: settings.boldText,
+        offline,
+        baseUrl: BASE_URL,
+      }),
+    [thread, page, colors, dark, settings.fontScale, settings.boldText, offline]
   );
 
   const onMessage = useCallback(
-    (e) => {
-      const msg = JSON.parse(e.nativeEvent.data);
+    (msg) => {
       if (msg.type === 'page') setPage(msg.page);
+      if (msg.type === 'share') setSharing(true);
+      if (msg.type === 'link') {
+        const target = routeForLink(msg.url);
+        if (target) navigation.push(target.screen, target.params);
+        else if (/^https?:/i.test(msg.url)) WebBrowser.openBrowserAsync(msg.url);
+        else Linking.openURL(msg.url).catch(() => {});
+      }
       if (msg.type === 'report') {
         const post = thread.posts[msg.index];
         const subject = encodeURIComponent('إبلاغ عن مشاركة في تطبيق شبكة الأمين');
@@ -107,47 +119,31 @@ export default function ThreadScreen({ navigation, route }) {
           `الموضوع: ${thread.title}\n${threadUrl(id)}\nالصفحة: ${page}\nكاتب المشاركة: ${post.author} (${post.date})\n\nسبب الإبلاغ:\n`
         );
         Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
-          Alert.alert('الإبلاغ', `أرسل بلاغك إلى: ${CONTACT_EMAIL}`)
+          notify('الإبلاغ', `أرسل بلاغك إلى: ${CONTACT_EMAIL}`)
         );
       }
     },
-    [thread, id, page]
-  );
-
-  const onNavigate = useCallback(
-    (req) => {
-      // Let the document itself and embedded players (SoundCloud, YouTube) load.
-      if (req.url === BASE_URL || req.url.startsWith('about:') || req.isTopFrame === false) return true;
-      const target = routeForLink(req.url);
-      if (target) navigation.push(target.screen, target.params);
-      else if (/^https?:/i.test(req.url)) WebBrowser.openBrowserAsync(req.url);
-      else Linking.openURL(req.url).catch(() => {});
-      return false;
-    },
-    [navigation]
+    [thread, id, page, navigation]
   );
 
   if (error) return <ErrorView error={error} onRetry={load} />;
   if (!thread) return <Loading />;
 
   return (
-    <WebView
-      ref={webRef}
-      originWhitelist={['*']}
-      source={{ html, baseUrl: BASE_URL }}
-      style={{ backgroundColor: colors.bg }}
-      onMessage={onMessage}
-      onShouldStartLoadWithRequest={onNavigate}
-      allowsInlineMediaPlayback
-      allowsFullscreenVideo
-      mediaPlaybackRequiresUserAction
-      decelerationRate="normal"
-      startInLoadingState
-      renderLoading={() => <Loading />}
-    />
+    <View style={styles.flex}>
+      <HtmlView html={html} background={colors.bg} onMessage={onMessage} />
+      <ShareSheet
+        visible={sharing}
+        title={thread.title || route.params.title || ''}
+        url={threadUrl(id)}
+        onClose={() => setSharing(false)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  actions: { flexDirection: 'row', gap: 18, alignItems: 'center' },
+  flex: { flex: 1 },
+  // The web header gives headerRight no edge padding of its own.
+  actions: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingEnd: Platform.OS === 'web' ? 16 : 0 },
 });

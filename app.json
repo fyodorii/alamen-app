@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#0f5f6e",
+    "backgroundColor": "#0f2540",
     "ios": {
       "bundleIdentifier": "com.alamen.salafi",
       "supportsTablet": true,
@@ -24,14 +24,19 @@
     "android": {
       "package": "com.alamen.salafi",
       "adaptiveIcon": {
-        "backgroundColor": "#0f5f6e",
+        "backgroundColor": "#0f2540",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "name": "شبكة الأمين السلفية",
+      "shortName": "الأمين",
+      "themeColor": "#14304f",
+      "backgroundColor": "#0f2540"
     },
     "plugins": [
       "expo-sharing",
@@ -40,11 +45,15 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0f5f6e",
+          "backgroundColor": "#0f2540",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 200
+          "imageWidth": 220
         }
-      ]
-    ]
+      ],
+      "expo-notifications"
+    ],
+    "experiments": {
+      "baseUrl": "/app"
+    }
   }
 }
