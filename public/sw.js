@@ -1,8 +1,109 @@
-// Service worker for the home-screen web app: shows push notifications sent by
-// push/cron.php and opens the related thread when one is tapped.
+// Service worker for the home-screen web app:
+// - keeps the app's files on the device so it opens instantly (updates arrive in the background),
+// - shows push notifications sent by push/cron.php and opens the thread when one is tapped.
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+const VERSION = 'v2';
+const PAGE_CACHE = `alamen-page-${VERSION}`;
+const FILE_CACHE = `alamen-files-${VERSION}`;
+const SCOPE = self.registration.scope; // https://…/app/
+const KEEP_BUNDLES = 3; // old app versions kept so a cached page still finds its code
+
+// Cache the app page and everything it needs on install, so even the second
+// launch comes from the device.
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const res = await fetch(SCOPE, { cache: 'no-cache' });
+        if (!res.ok) return;
+        const html = await res.clone().text();
+        await (await caches.open(PAGE_CACHE)).put(SCOPE, res);
+        const urls = [...html.matchAll(/(?:src|href)="(\/app\/(?:_expo|fonts)\/[^"]+|\/app\/splash-logo\.png)"/g)].map((m) => m[1]);
+        await (await caches.open(FILE_CACHE)).addAll(urls);
+      } catch (e) {
+        // Offline during install: files get cached as they are used instead.
+      }
+    })()
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      for (const key of await caches.keys()) {
+        if (key.startsWith('alamen-') && key !== PAGE_CACHE && key !== FILE_CACHE) await caches.delete(key);
+      }
+      await self.clients.claim();
+    })()
+  );
+});
+
+// The app page: show the saved copy at once and refresh it for next time.
+async function appPage(event) {
+  const cache = await caches.open(PAGE_CACHE);
+  const saved = await cache.match(SCOPE);
+  const fresh = fetch(SCOPE, { cache: 'no-cache' }).then((res) => {
+    if (res.ok) cache.put(SCOPE, res.clone());
+    return res;
+  });
+  if (saved) {
+    event.waitUntil(fresh.catch(() => {}));
+    return saved;
+  }
+  return fresh;
+}
+
+// Build files have a content hash in their name, so a saved copy never goes stale.
+async function savedFile(request) {
+  const cache = await caches.open(FILE_CACHE);
+  const saved = await cache.match(request);
+  if (saved) return saved;
+  const res = await fetch(request);
+  if (res.ok) {
+    await cache.put(request, res.clone());
+    if (/\/_expo\/static\/js\//.test(request.url)) await trimBundles(cache);
+  }
+  return res;
+}
+
+async function trimBundles(cache) {
+  const bundles = (await cache.keys()).filter((r) => /\/_expo\/static\/js\//.test(r.url));
+  for (const old of bundles.slice(0, Math.max(0, bundles.length - KEEP_BUNDLES))) await cache.delete(old);
+}
+
+// Icons and the manifest: answer from the device, refresh in the background.
+async function refreshedFile(event) {
+  const cache = await caches.open(FILE_CACHE);
+  const saved = await cache.match(event.request);
+  const fresh = fetch(event.request).then((res) => {
+    if (res.ok) cache.put(event.request, res.clone());
+    return res;
+  });
+  if (saved) {
+    event.waitUntil(fresh.catch(() => {}));
+    return saved;
+  }
+  return fresh;
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  // Forum pages are cached by the app itself; notification scripts must stay live.
+  if (!url.href.startsWith(SCOPE) || url.pathname.includes('/push/')) return;
+
+  if (request.mode === 'navigate') {
+    const path = url.pathname.replace(new URL(SCOPE).pathname, '');
+    if (path === '' || path === 'index.html') event.respondWith(appPage(event));
+    return;
+  }
+  if (/\/(_expo|assets|fonts)\//.test(url.pathname)) event.respondWith(savedFile(request));
+  else event.respondWith(refreshedFile(event));
+});
+
+// ---- Push notifications ----
 
 async function messageFor(event) {
   if (event.data) {
@@ -14,7 +115,7 @@ async function messageFor(event) {
   }
   // Servers whose PHP cannot encrypt payloads send an empty push; fetch the text instead.
   try {
-    const res = await fetch(new URL('push/pending.php', self.registration.scope), { cache: 'no-store' });
+    const res = await fetch(new URL('push/pending.php', SCOPE), { cache: 'no-store' });
     return await res.json();
   } catch (e) {
     return {};
@@ -41,12 +142,12 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope).href;
+  const url = new URL((event.notification.data && event.notification.data.url) || './', SCOPE).href;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of windows) {
-        if (client.url.startsWith(self.registration.scope)) {
+        if (client.url.startsWith(SCOPE)) {
           await client.focus();
           client.postMessage({ type: 'open', url });
           return;

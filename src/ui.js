@@ -1,6 +1,7 @@
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useApp } from './store';
 import { avatarFor, font, rtl } from './theme';
 
@@ -22,16 +23,21 @@ export function confirmDelete(title, message, onConfirm) {
 }
 
 // Runs an async loader and tracks loading / error / refresh state.
-export function useLoader(load, deps) {
+// With a cacheKey, the last result is kept on the device and shown at once on the
+// next visit while fresh data loads (the forum takes seconds to answer).
+export function useLoader(load, deps, cacheKey) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const storageKey = cacheKey ? `cache.${cacheKey}` : null;
 
   const run = useCallback(async (isRefresh) => {
     if (isRefresh) setRefreshing(true);
     setError(null);
     try {
-      setData(await load());
+      const fresh = await load();
+      setData(fresh);
+      if (storageKey) AsyncStorage.setItem(storageKey, JSON.stringify(fresh)).catch(() => {});
     } catch (e) {
       setError(e);
     } finally {
@@ -41,8 +47,13 @@ export function useLoader(load, deps) {
   }, deps);
 
   useEffect(() => {
+    if (storageKey) {
+      AsyncStorage.getItem(storageKey)
+        .then((raw) => raw && setData((current) => current ?? JSON.parse(raw)))
+        .catch(() => {});
+    }
     run(false);
-  }, [run]);
+  }, [run, storageKey]);
 
   return { data, setData, error, refreshing, reload: () => run(true), retry: () => run(false) };
 }

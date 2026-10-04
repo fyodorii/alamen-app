@@ -6,8 +6,8 @@ import { useAlerts } from '../alerts';
 import { useApp } from '../store';
 import { Empty, ErrorView, Loading, ThreadCard, useLoader } from '../ui';
 
-function timeAgo(date) {
-  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+function timeAgo(timestamp) {
+  const mins = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
   if (mins < 1) return 'الآن';
   if (mins < 60) return `منذ ${mins} دقيقة`;
   const hours = Math.round(mins / 60);
@@ -19,7 +19,7 @@ function timeAgo(date) {
 export default function LatestScreen({ navigation }) {
   const { colors } = useApp();
   const { markLatestSeen } = useAlerts();
-  const { data, error, refreshing, reload, retry } = useLoader(getLatest, []);
+  const { data, error, refreshing, reload, retry } = useLoader(getLatest, [], 'latest');
 
   // Visiting this tab clears the "new topics" badge.
   useFocusEffect(

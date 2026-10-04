@@ -176,7 +176,7 @@ export async function getLatest() {
       title: stripTags(field(s, 'title')),
       author: stripTags(field(s, 'dc:creator')),
       forum: stripTags(field(s, 'category')),
-      date: new Date(field(s, 'pubDate')),
+      date: Date.parse(field(s, 'pubDate')), // timestamp, so it survives the JSON cache
       preview: stripTags(field(s, 'description')),
     });
   }

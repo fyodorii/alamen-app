@@ -4,9 +4,10 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
-import { useFonts, Amiri_400Regular, Amiri_700Bold } from '@expo-google-fonts/amiri';
+// Deep import: the package index would bundle every icon set (~700 KB).
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AlertsProvider, useAlerts } from './src/alerts';
+import { useAppFonts } from './src/fonts';
 import { initialThreadId, onNotificationOpen, registerServiceWorker } from './src/push';
 import { AppProvider, useApp } from './src/store';
 import { fonts } from './src/theme';
@@ -70,7 +71,7 @@ function Tabs() {
 
 function Root() {
   const { ready, colors, dark } = useApp();
-  const [fontsLoaded, fontError] = useFonts({ Amiri_400Regular, Amiri_700Bold });
+  const [fontsLoaded, fontError] = useAppFonts();
 
   // Web: the service worker shows notifications; tapping one opens its thread.
   useEffect(() => {

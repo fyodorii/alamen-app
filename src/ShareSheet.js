@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { Linking, Modal, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { FontAwesome6, Ionicons } from '@expo/vector-icons';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useApp } from './store';
 import { Txt } from './ui';
 

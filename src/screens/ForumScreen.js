@@ -7,7 +7,7 @@ import { Empty, ErrorView, ForumCard, Loading, SectionHeader, ThreadCard, useLoa
 export default function ForumScreen({ navigation, route }) {
   const { id } = route.params;
   const { colors } = useApp();
-  const { data, setData, error, refreshing, reload, retry } = useLoader(() => getForum(id, 1), [id]);
+  const { data, setData, error, refreshing, reload, retry } = useLoader(() => getForum(id, 1), [id], `forum.${id}`);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
 

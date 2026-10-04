@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { BASE_URL } from '../api';
 import { useAlerts } from '../alerts';
 import { CONTACT_EMAIL } from '../config';

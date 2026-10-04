@@ -43,3 +43,6 @@ yarn-error.*
 # Push notification runtime data (created on the server)
 public/push/data/*.json
 public/push/data/*.lock
+
+# Web build output
+alamen-web-app.zip

@@ -1,6 +1,22 @@
 // Builds the HTML document shown in the thread reader (WebView on iOS, iframe on the web).
+import { Platform } from 'react-native';
 import { formatForumDate, POSTS_PER_PAGE } from './api';
 import { avatarFor } from './theme';
+
+// The web build serves its own small Amiri files (already cached by the app);
+// the iOS app's WebView loads Amiri from Google Fonts.
+function fontHead() {
+  if (Platform.OS === 'web') {
+    const url = (file) => new URL(`fonts/${file}`, window.location.href).href;
+    return `<style>
+  @font-face { font-family: "Amiri"; src: url(${url('amiri-regular.woff2')}) format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Amiri"; src: url(${url('amiri-bold.woff2')}) format("woff2"); font-weight: 700; font-display: swap; }
+</style>`;
+  }
+  return `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">`;
+}
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -58,9 +74,7 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
 <meta charset="utf-8">
 <base href="${baseUrl}">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+${fontHead()}
 <style>
   :root { color-scheme: ${dark ? 'dark' : 'light'}; }
   html, body { margin: 0; padding: 0; background: ${colors.bg}; color: ${colors.text}; }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Image, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getForumIndex } from '../api';
 import { useApp } from '../store';
 import { font } from '../theme';
-import { ErrorView, ForumCard, Loading, SectionHeader, Txt, useLoader } from '../ui';
+import { ErrorView, ForumCard, SectionHeader, Txt, useLoader } from '../ui';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -20,29 +20,28 @@ function formatDate(date, locale, options) {
   }
 }
 
+// Compact clock that sits in the header row, beside the network's name.
 function Clock() {
-  const { colors, settings } = useApp();
+  const { colors } = useApp();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const t = setInterval(() => setNow(new Date()), 10 * 1000);
     return () => clearInterval(t);
   }, []);
 
   const h = now.getHours();
-  const gregorian = formatDate(now, 'ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const gregorian = formatDate(now, 'ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
   const hijri = formatDate(now, 'ar-SA-u-nu-latn', { calendar: 'islamic-umalqura', day: 'numeric', month: 'long', year: 'numeric' });
-  const bold = { bold: true };
 
   return (
-    <View style={[styles.clock, { borderColor: 'rgba(214,180,92,0.45)' }]}>
+    <View style={styles.clock}>
       {/* Digits read left to right even inside Arabic text. */}
       <View style={styles.timeRow}>
-        <Text style={[font(15, bold), styles.period, { color: colors.gold }]}>{h < 12 ? 'صباحاً' : 'مساءً'}</Text>
-        <Text style={[font(54, bold), styles.time]}>{`${pad(h % 12 || 12)}:${pad(now.getMinutes())}`}</Text>
-        <Text style={[font(22, bold), styles.seconds, { color: colors.gold }]}>{`:${pad(now.getSeconds())}`}</Text>
+        <Text style={[font(22, { bold: true }), styles.time]}>{`${pad(h % 12 || 12)}:${pad(now.getMinutes())}`}</Text>
+        <Text style={[font(12, { bold: true }), { color: colors.gold }]}>{h < 12 ? 'ص' : 'م'}</Text>
       </View>
-      <Text style={[font(16, { bold: settings.boldText }), styles.date]}>{gregorian}</Text>
-      {hijri ? <Text style={[font(16, { bold: settings.boldText }), styles.date, { color: colors.gold }]}>{hijri}</Text> : null}
+      <Text style={[font(11), styles.date]} numberOfLines={1}>{gregorian}</Text>
+      {hijri ? <Text style={[font(11), styles.date, { color: colors.gold }]} numberOfLines={1}>{hijri}</Text> : null}
     </View>
   );
 }
@@ -56,28 +55,35 @@ function Hero() {
       colors={[colors.heroFrom, colors.heroTo]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.hero, { paddingTop: insets.top + 12 }]}
+      style={[styles.hero, { paddingTop: insets.top + 10 }]}
     >
       <View style={styles.brand}>
         <Image source={require('../../assets/logo-mark.png')} style={styles.logo} />
         <View style={styles.brandText}>
-          <Txt size={27} bold color="#fff">شبكة الأمين السلفية</Txt>
-          <Txt size={15} color="rgba(255,255,255,0.75)">منابر علمية · دروس ومحاضرات · فتاوى</Txt>
+          <Txt size={21} bold color="#fff">شبكة الأمين السلفية</Txt>
+          <Txt size={13} color="rgba(255,255,255,0.75)" numberOfLines={1}>منابر علمية · دروس · فتاوى</Txt>
         </View>
+        <Clock />
       </View>
-      <Clock />
     </LinearGradient>
   );
 }
 
 export default function HomeScreen({ navigation }) {
   const { colors } = useApp();
-  const { data, error, refreshing, reload, retry } = useLoader(getForumIndex, []);
+  const { data, error, refreshing, reload, retry } = useLoader(getForumIndex, [], 'forums');
 
-  if (error && !data) return <ErrorView error={error} onRetry={retry} />;
-  if (!data) return <Loading />;
+  // The header shows at once; only the list below waits for the forum.
+  if (error && !data) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <Hero />
+        <ErrorView error={error} onRetry={retry} />
+      </View>
+    );
+  }
 
-  const sections = data.map((c) => ({ key: c.id, title: c.title, data: c.forums }));
+  const sections = (data ?? []).map((c) => ({ key: c.id, title: c.title, data: c.forums }));
   const openForum = (f) => navigation.navigate('Forum', { id: f.id, title: f.title });
 
   return (
@@ -88,6 +94,7 @@ export default function HomeScreen({ navigation }) {
       keyExtractor={(f) => f.id}
       stickySectionHeadersEnabled={false}
       ListHeaderComponent={Hero}
+      ListFooterComponent={data ? null : <ActivityIndicator style={styles.loading} size="large" color={colors.primary} />}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={colors.primary} />}
       renderSectionHeader={({ section }) => <SectionHeader>{section.title}</SectionHeader>}
       renderItem={({ item }) => <ForumCard forum={item} onPress={() => openForum(item)} onSubPress={openForum} />}
@@ -96,22 +103,22 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 16, paddingBottom: 18, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  hero: { paddingHorizontal: 14, paddingBottom: 14, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   brandText: { flex: 1 },
-  logo: { width: 76, height: 76 },
+  logo: { width: 54, height: 54 },
   clock: {
-    marginTop: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 22,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
     alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(214,180,92,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    minWidth: 104,
   },
-  timeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, direction: 'ltr' },
-  time: { color: '#fff', letterSpacing: 1 },
-  seconds: { minWidth: 28 },
-  period: {},
-  date: { color: 'rgba(255,255,255,0.85)', textAlign: 'center' },
+  timeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, direction: 'ltr' },
+  time: { color: '#fff', letterSpacing: 0.5 },
+  date: { color: 'rgba(255,255,255,0.85)', textAlign: 'center', lineHeight: 17 },
+  loading: { marginTop: 40 },
 });
