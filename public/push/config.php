@@ -2,7 +2,7 @@
 // Settings for the push notification scripts. Edit these before uploading.
 
 // Contact address sent to the push services (Apple, Google, Mozilla) with each notification.
-define('PUSH_CONTACT', 'admin@al-amen.com');
+define('PUSH_CONTACT', 'alwaledi@outlook.sa');
 
 // The forum, and where the app is hosted (notification taps open the app here).
 define('FORUM_URL', 'https://www.al-amen.com/vb/');
