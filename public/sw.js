@@ -2,10 +2,12 @@
 // - keeps the app's files on the device so it opens fast, even offline,
 // - shows push notifications sent by push/cron.php and opens the thread when one is tapped.
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const PAGE_CACHE = `alamen-page-${VERSION}`;
 const FILE_CACHE = `alamen-files-${VERSION}`;
 const SCOPE = self.registration.scope; // https://…/app/
+// Ask for index.html by name: the server redirects the bare folder address elsewhere.
+const PAGE_URL = new URL('index.html', SCOPE).href;
 const KEEP_BUNDLES = 3; // old app versions kept so a cached page still finds its code
 
 // Cache the app page and everything it needs on install, so even the second
@@ -14,10 +16,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       try {
-        const res = await fetch(SCOPE, { cache: 'no-cache' });
-        if (!res.ok) return;
+        const res = await fetch(PAGE_URL, { cache: 'no-cache' });
+        if (!isAppPage(res)) return;
         const html = await res.clone().text();
-        await (await caches.open(PAGE_CACHE)).put(SCOPE, res);
+        await (await caches.open(PAGE_CACHE)).put(PAGE_URL, res);
         const urls = [...html.matchAll(/(?:src|href)="(\/app\/(?:_expo|fonts)\/[^"]+|\/app\/splash-logo\.png)"/g)].map((m) => m[1]);
         await (await caches.open(FILE_CACHE)).addAll(urls);
       } catch (e) {
@@ -43,20 +45,23 @@ self.addEventListener('activate', (event) => {
 // never wait long for it — after a short timeout (or offline) use the saved copy.
 const PAGE_TIMEOUT_MS = 2500;
 
+// Only a direct, successful answer is the app page (never a redirect to the forum).
+const isAppPage = (res) => res && res.ok && !res.redirected;
+
 async function appPage(event) {
   const cache = await caches.open(PAGE_CACHE);
-  const fresh = fetch(SCOPE, { cache: 'no-cache' }).then((res) => {
-    if (res.ok) cache.put(SCOPE, res.clone());
+  const fresh = fetch(PAGE_URL, { cache: 'no-cache' }).then((res) => {
+    if (isAppPage(res)) cache.put(PAGE_URL, res.clone());
     return res;
   });
   const timeout = new Promise((resolve) => setTimeout(resolve, PAGE_TIMEOUT_MS));
   try {
     const res = await Promise.race([fresh, timeout]);
-    if (res && res.ok) return res;
+    if (isAppPage(res)) return res;
   } catch (e) {
     // Offline: fall through to the saved copy.
   }
-  const saved = await cache.match(SCOPE);
+  const saved = await cache.match(PAGE_URL);
   if (saved) {
     event.waitUntil(fresh.catch(() => {}));
     return saved;

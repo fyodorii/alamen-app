@@ -1,8 +1,10 @@
 // Finishes the web build in dist/ for the forum's Apache server and zips it.
 //
-// - Writes a gzip copy next to each text file; .htaccess serves it to browsers that
-//   accept gzip (the server does not compress static files by itself).
-// - Adds .htaccess with the compression and browser-caching rules.
+// - Gzips the app's code and points index.html at the .gz file; .htaccess marks it
+//   as gzip-encoded JavaScript (the server does not compress files by itself).
+//   No mod_rewrite here: turning it on in app/ pulled in the forum's root rules,
+//   which sent /app/ to /vb/.
+// - Adds .htaccess with the encoding and browser-caching rules.
 // - Zips dist/ for upload. dist/push/data/ holds only its .htaccess guard; the
 //   keys and subscriber list are created on the server and never overwritten.
 //
@@ -14,11 +16,13 @@ import { crc32, deflateRawSync, gzipSync } from 'node:zlib';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const DIST = join(ROOT, 'dist');
 const ZIP = join(ROOT, 'alamen-web-app.zip');
-const COMPRESS = /\.(js|css|json|webmanifest|svg|ttf|html)$/;
 
 const HTACCESS = `# Faster loading for the Al-Amen app (written by scripts/postbuild-web.mjs).
 # If the app ever shows "500 Internal Server Error", delete this file.
+# Do not add RewriteEngine here: it makes the forum's own rules send /app/ to /vb/.
 
+# index.html loads the app's code as index-<hash>.js.gz: sent as gzip-encoded
+# JavaScript, which every browser unpacks by itself.
 <IfModule mod_mime.c>
   AddType application/javascript .js
   AddType application/manifest+json .webmanifest
@@ -28,26 +32,15 @@ const HTACCESS = `# Faster loading for the Al-Amen app (written by scripts/postb
   AddEncoding gzip .gz
 </IfModule>
 
-# Serve file.js.gz instead of file.js when the browser accepts gzip.
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-  RewriteCond %{HTTP:Accept-Encoding} gzip
-  RewriteCond %{REQUEST_FILENAME}.gz -f
-  RewriteRule ^(.+\\.(?:js|css|json|webmanifest|svg|ttf))$ $1.gz [L]
-</IfModule>
-
 <IfModule mod_headers.c>
-  <FilesMatch "\\.gz$">
-    Header append Vary Accept-Encoding
-  </FilesMatch>
   # The app's code has its content hash in the file name, so it never changes.
   <FilesMatch "^index-[0-9a-f]+\\.js(\\.gz)?$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
-  <FilesMatch "\\.(woff2|png|ttf|ttf\\.gz)$">
+  <FilesMatch "\\.(woff2|png|ttf)$">
     Header set Cache-Control "public, max-age=604800"
   </FilesMatch>
-  <FilesMatch "^(index\\.html|sw\\.js|manifest\\.webmanifest(\\.gz)?)$">
+  <FilesMatch "^(index\\.html|sw\\.js|manifest\\.webmanifest)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
@@ -112,16 +105,20 @@ function writeZip(target, entries) {
 
 rmSync(join(DIST, 'metadata.json'), { force: true });
 
-let saved = 0;
-for (const file of files(DIST)) {
-  if (COMPRESS.test(file) && statSync(file).size > 1024) {
-    const data = readFileSync(file);
-    const packed = gzipSync(data, { level: 9 });
-    writeFileSync(file + '.gz', packed);
-    saved += data.length - packed.length;
-  }
+// Gzip the app's code and load the .gz file from index.html.
+const indexFile = join(DIST, 'index.html');
+let html = readFileSync(indexFile, 'utf8');
+for (const file of files(join(DIST, '_expo'))) {
+  if (!file.endsWith('.js')) continue;
+  const data = readFileSync(file);
+  const packed = gzipSync(data, { level: 9 });
+  writeFileSync(file + '.gz', packed);
+  const url = '/app/' + relative(DIST, file).split(sep).join('/');
+  if (!html.includes(`src="${url}"`)) throw new Error(`index.html does not load ${url}`);
+  html = html.replace(`src="${url}"`, `src="${url}.gz"`);
+  console.log(`${url}: ${Math.round(data.length / 1024)} KB -> ${Math.round(packed.length / 1024)} KB gzip`);
 }
-console.log(`gzip copies written (${Math.round(saved / 1024)} KB less to download)`);
+writeFileSync(indexFile, html);
 
 writeFileSync(join(DIST, '.htaccess'), HTACCESS);
 

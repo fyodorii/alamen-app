@@ -6,7 +6,7 @@ define('PUSH_CONTACT', 'alwaledi@outlook.sa');
 
 // The forum, and where the app is hosted (notification taps open the app here).
 define('FORUM_URL', 'https://www.al-amen.com/vb/');
-define('APP_URL', 'https://www.al-amen.com/app/');
+define('APP_URL', 'https://www.al-amen.com/app/index.html');
 
 // Secret for running cron.php from a URL (cron jobs that use wget/curl instead of php).
 define('CRON_KEY', 'W6wHOvUMLbdATSuIXd56kynl');
