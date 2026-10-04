@@ -3,8 +3,8 @@
 - Writes a gzip copy next to each text file; .htaccess serves it to browsers that
   accept gzip (the server does not compress static files by itself).
 - Adds .htaccess with the compression and browser-caching rules.
-- Zips dist/ for upload, leaving out push/data/ so the server keeps its
-  notification keys and subscriber list.
+- Zips dist/ for upload. dist/push/data/ holds only its .htaccess guard; the
+  keys and subscriber list are created on the server and never overwritten.
 
 Usage: npm run build:web   (runs `expo export --platform web` first)
 """
@@ -72,9 +72,8 @@ def main():
     ZIP.unlink(missing_ok=True)
     with zipfile.ZipFile(ZIP, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(DIST.rglob('*')):
-            rel = path.relative_to(DIST).as_posix()
-            if path.is_file() and not rel.startswith('push/data/'):
-                z.write(path, rel)
+            if path.is_file():
+                z.write(path, path.relative_to(DIST).as_posix())
     print(f'{ZIP.name}: {ZIP.stat().st_size // 1024} KB')
 
 
