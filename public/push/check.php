@@ -22,6 +22,19 @@ $checks[] = ['تشفير نص الإشعار', can_encrypt(), 'يعمل بدون
 $subs = store_read('subscriptions.json');
 $state = store_read('state.json');
 $lastRun = isset($state['last_run']) ? date('Y-m-d H:i', $state['last_run']) . ' (توقيت الخادم)' : 'لم يعمل بعد';
+
+// With ?key=CRON_KEY, show the cPanel cron command for this server. It runs cron.php
+// directly with PHP, so the host's bot protection (which blocks outside cron services)
+// is not involved. It contains the server's folder path, so it is not shown to everyone.
+$cronCommand = '';
+if (isset($_GET['key']) && hash_equals(CRON_KEY, (string) $_GET['key'])) {
+    $php = '/usr/local/bin/php'; // cPanel's command-line PHP
+    // Prefer the command-line PHP of the same version the site runs on (cPanel EasyApache / CloudLinux).
+    foreach (['#^(/opt/cpanel/ea-php\d+/root/usr)/s?bin/#', '#^(/opt/alt/php\d+/usr)/s?bin/#'] as $pattern) {
+        if (preg_match($pattern, PHP_BINARY, $m) && @is_executable($m[1] . '/bin/php')) $php = $m[1] . '/bin/php';
+    }
+    $cronCommand = $php . ' ' . __DIR__ . '/cron.php >/dev/null 2>&1';
+}
 ?>
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -37,6 +50,9 @@ $lastRun = isset($state['last_run']) ? date('Y-m-d H:i', $state['last_run']) . '
   .ok { color: #1d7a46; font-weight: bold; }
   .bad { color: #b42318; font-weight: bold; }
   small { color: #64748b; display: block; }
+  h2 { color: #1f4e79; font-size: 1.15em; margin-top: 24px; }
+  pre { direction: ltr; text-align: left; background: #fff; border: 2px solid #2f6fae; border-radius: 12px; padding: 12px;
+        white-space: pre-wrap; word-break: break-all; font-size: 14px; user-select: all; -webkit-user-select: all; }
 </style>
 </head>
 <body>
@@ -49,5 +65,10 @@ $lastRun = isset($state['last_run']) ? date('Y-m-d H:i', $state['last_run']) . '
   <li>الأجهزة المشتركة: <b><?= count($subs) ?></b></li>
   <li>آخر تشغيل لمهمة الإرسال (cron): <b><?= htmlspecialchars($lastRun) ?></b></li>
 </ul>
+<?php if ($cronCommand): ?>
+<h2>أمر cron لهذا الخادم</h2>
+<p>في cPanel ← <b>Cron Jobs</b>: من «الإعدادات العامة» اختر <b>مرة كل 15 دقيقة</b>، ثم انسخ السطر التالي كما هو والصقه في خانة <b>الأمر</b>، واضغط «إضافة مهمة Cron جديدة»:</p>
+<pre><?= htmlspecialchars($cronCommand) ?></pre>
+<?php endif; ?>
 </body>
 </html>
