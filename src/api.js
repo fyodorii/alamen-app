@@ -3,17 +3,19 @@ import { Platform } from 'react-native';
 import { decodeCp1256 } from './cp1256';
 
 // The web build on the forum's own domain reads the forum from the same origin.
-// The GitHub Pages preview reads it cross-site, which works only while the forum's
-// vb/.htaccess allows that origin (Access-Control-Allow-Origin).
+// Elsewhere (the GitHub Pages preview) browsers block cross-site reads, so it reads
+// through the app's forum.php on al-amen.com, which allows the preview's origin.
 const FORUM_URL = 'https://www.al-amen.com/vb/';
-export const BASE_URL =
-  Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.location.hostname)
-    ? `${window.location.origin}/vb/`
-    : FORUM_URL;
+const onForumSite = Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.location.hostname);
+export const BASE_URL = onForumSite ? `${window.location.origin}/vb/` : FORUM_URL;
+const readUrl =
+  Platform.OS === 'web' && !onForumSite
+    ? (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`
+    : (path) => BASE_URL + path;
 export const POSTS_PER_PAGE = 40;
 
 async function fetchText(path) {
-  const res = await fetch(BASE_URL + path, {
+  const res = await fetch(readUrl(path), {
     headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
     // No forum cookies in or out: the app reads as a guest, and the style choice
     // below must not stick to the visitor's normal browsing of the forum.

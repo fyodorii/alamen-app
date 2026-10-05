@@ -124,12 +124,8 @@ npm run build:web
 عند كل رفع إلى `main` (أو فرع العمل) يبني `.github/workflows/pages-preview.yml` نسخة الويب
 وينشرها في الفرع `gh-pages`، فتظهر على https://fyodorii.github.io/alamen-app/
 (يتطلب أن يكون المستودع عاماً، وتفعيل Settings ← Pages ← Deploy from a branch ← `gh-pages`).
-لتظهر المواضيع في المعاينة أضف إلى ملف `.htaccess` في مجلد `vb` على الموقع:
-```
-<IfModule mod_headers.c>
-  Header always set Access-Control-Allow-Origin "https://fyodorii.github.io"
-</IfModule>
-```
+المعاينة تقرأ المواضيع عبر `app/forum.php` على الموقع (يُرفع مع ملف التطبيق)، لأن المتصفح
+يمنع القراءة من موقع آخر، والخادم يتجاهل أسطر `Header` في `.htaccess`.
 
 ### لماذا يفتح بسرعة
 - **عامل الخدمة** (`public/sw.js`) يحفظ ملفات التطبيق على الجهاز، فيفتح فوراً حتى دون إنترنت، وتصل التحديثات في الخلفية.
