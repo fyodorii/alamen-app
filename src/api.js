@@ -2,10 +2,14 @@
 import { Platform } from 'react-native';
 import { decodeCp1256 } from './cp1256';
 
-// The web build is hosted on the forum's own domain, so it reads the forum from
-// the same origin (browsers would block cross-site reads).
+// The web build on the forum's own domain reads the forum from the same origin.
+// The GitHub Pages preview reads it cross-site, which works only while the forum's
+// vb/.htaccess allows that origin (Access-Control-Allow-Origin).
+const FORUM_URL = 'https://www.al-amen.com/vb/';
 export const BASE_URL =
-  Platform.OS === 'web' ? `${window.location.origin}/vb/` : 'https://www.al-amen.com/vb/';
+  Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.location.hostname)
+    ? `${window.location.origin}/vb/`
+    : FORUM_URL;
 export const POSTS_PER_PAGE = 40;
 
 async function fetchText(path) {
