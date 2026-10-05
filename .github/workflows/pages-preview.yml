@@ -1,0 +1,43 @@
+# Publishes the web app to GitHub Pages as a preview: https://<owner>.github.io/<repo>/
+# One-time setup: Settings → Pages → Source "Deploy from a branch" → gh-pages / (root).
+name: Web preview (GitHub Pages)
+
+on:
+  push:
+    branches: [main, claude/admiring-archimedes-675hd0]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for GitHub Pages
+        run: node scripts/build-pages.mjs
+        env:
+          PAGES_BASE: /${{ github.event.repository.name }}
+
+      - name: Publish to the gh-pages branch
+        working-directory: dist-pages
+        run: |
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898299+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Web preview from ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages
