@@ -1,35 +1,44 @@
-// In-app alerts: a banner for newly posted topics (checked every few minutes while
-// the app is open), a badge on the "الجديد" tab, and the 15-minute salawat reminder.
+// In-app alerts: a banner for newly posted topics and for new replies in the forum
+// the reader chose (checked every few minutes while the app is open), a badge on the
+// "الجديد" tab, and the 10-minute salawat reminder, each with a soft chime.
 // When device notifications are on, the reminder comes from them instead.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { getLatest } from './api';
+import { getForum, getLatest } from './api';
 import { getPushState } from './push';
-import { SALAWAT, SALAWAT_TITLE } from './salawat';
+import { SALAWAT, SALAWAT_EVERY_MINUTES, SALAWAT_TITLE } from './salawat';
+import { playChime } from './sound';
 import { useApp } from './store';
 import { Txt } from './ui';
 
 const NEWS_POLL_MS = 3 * 60 * 1000;
-const SALAWAT_EVERY_MS = 15 * 60 * 1000;
+const SALAWAT_EVERY_MS = SALAWAT_EVERY_MINUTES * 60 * 1000;
 const FIRST_SALAWAT_MS = 60 * 1000;
 const LAST_NOTIFIED_KEY = 'news.lastNotifiedId';
 const LAST_SEEN_KEY = 'news.lastSeenId';
+const repliesKey = (forumId) => `replies.${forumId}`; // {threadId: reply count}
 
 const AlertsContext = createContext(null);
 export const useAlerts = () => useContext(AlertsContext);
 
 const maxId = (items) => Math.max(0, ...items.map((i) => +i.id));
+const count = (s) => parseInt(String(s).replace(/,/g, ''), 10) || 0;
 
 export function AlertsProvider({ onOpenThread, children }) {
   const { ready, settings } = useApp();
-  const [banner, setBanner] = useState(null);
-  const [newCount, setNewCount] = useState(0);
-  const [pushActive, setPushActive] = useState(false);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const [banner, setBannerState] = useState(null);
+  // Every alert banner rings the chime, unless the reader turned sounds off.
+  const setBanner = useCallback((b) => {
+    if (b && settingsRef.current.sound) playChime();
+    setBannerState(b);
+  }, []);
+  const [newCount, setNewCount] = useState(0);
+  const [pushActive, setPushActive] = useState(false);
 
   const refreshPush = useCallback(async () => {
     setPushActive(await getPushState().catch(() => false));
@@ -64,7 +73,41 @@ export function AlertsProvider({ onOpenThread, children }) {
         threadId: fresh[0].id,
       });
     }
-  }, []);
+  }, [setBanner]);
+
+  // New replies in the chosen forum: compare each thread's reply count on its
+  // first page (newest activity first) with the counts seen last time.
+  const checkReplies = useCallback(async () => {
+    const forum = settingsRef.current.repliesForum;
+    if (!forum) return;
+    let page;
+    try {
+      page = await getForum(forum.id, 1);
+    } catch {
+      return;
+    }
+    const key = repliesKey(forum.id);
+    const before = JSON.parse((await AsyncStorage.getItem(key)) || 'null');
+    const now = {};
+    for (const t of page.threads) now[t.id] = count(t.replies);
+    await AsyncStorage.setItem(key, JSON.stringify(now));
+    if (!before) return; // first look at this forum: nothing to compare yet
+    const replied = page.threads.filter((t) => before[t.id] != null && now[t.id] > before[t.id]);
+    if (!replied.length) return;
+    const added = replied.reduce((n, t) => n + now[t.id] - before[t.id], 0);
+    setBanner({
+      kind: 'replies',
+      title: added > 1 ? `${added} ردود جديدة · ${forum.title}` : `رد جديد · ${forum.title}`,
+      body: replied[0].title,
+      threadId: replied[0].id,
+    });
+  }, [setBanner]);
+
+  // Sample banners so the reader can see and hear what alerts look like.
+  const testAlerts = useCallback(() => {
+    setBanner({ kind: 'news', title: 'موضوع جديد · تجربة التنبيه', body: 'هكذا يظهر تنبيه الموضوع الجديد عند نشره في الشبكة' });
+    setTimeout(() => setBanner({ kind: 'salawat', title: SALAWAT_TITLE, body: SALAWAT[0] }), 5000);
+  }, [setBanner]);
 
   const markLatestSeen = useCallback((items) => {
     const newest = String(maxId(items));
@@ -75,12 +118,13 @@ export function AlertsProvider({ onOpenThread, children }) {
   // New topics: check now, every few minutes, and whenever the app comes back to the foreground.
   useEffect(() => {
     if (!ready) return;
+    const check = () => checkNews().then(checkReplies);
     refreshPush();
-    checkNews();
-    const timer = setInterval(checkNews, NEWS_POLL_MS);
+    check();
+    const timer = setInterval(check, NEWS_POLL_MS);
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
-        checkNews();
+        check();
         refreshPush();
       }
     });
@@ -88,7 +132,12 @@ export function AlertsProvider({ onOpenThread, children }) {
       clearInterval(timer);
       sub.remove();
     };
-  }, [ready, checkNews, refreshPush]);
+  }, [ready, checkNews, checkReplies, refreshPush]);
+
+  // A newly chosen forum starts from its current counts at once.
+  useEffect(() => {
+    if (ready && settings.repliesForum) checkReplies();
+  }, [ready, settings.repliesForum?.id, checkReplies]);
 
   // Salawat reminder while the app is open (device notifications cover it otherwise).
   useEffect(() => {
@@ -103,11 +152,11 @@ export function AlertsProvider({ onOpenThread, children }) {
       clearTimeout(first);
       clearInterval(every);
     };
-  }, [ready, settings.salawat, pushActive]);
+  }, [ready, settings.salawat, pushActive, setBanner]);
 
   const value = useMemo(
-    () => ({ newCount, markLatestSeen, pushActive, refreshPush, showBanner: setBanner }),
-    [newCount, markLatestSeen, pushActive, refreshPush]
+    () => ({ newCount, markLatestSeen, pushActive, refreshPush, showBanner: setBanner, testAlerts }),
+    [newCount, markLatestSeen, pushActive, refreshPush, setBanner, testAlerts]
   );
 
   return (
@@ -115,10 +164,10 @@ export function AlertsProvider({ onOpenThread, children }) {
       {children}
       <Banner
         banner={banner}
-        onClose={() => setBanner(null)}
+        onClose={() => setBannerState(null)}
         onPress={() => {
           if (banner?.threadId) onOpenThread(banner.threadId);
-          setBanner(null);
+          setBannerState(null);
         }}
       />
     </AlertsContext.Provider>
@@ -161,7 +210,7 @@ function Banner({ banner, onClose, onPress }) {
         style={[styles.card, { backgroundColor: colors.header, borderColor: salawat ? colors.gold : colors.accent }]}
       >
         <View style={[styles.icon, { backgroundColor: salawat ? colors.gold : colors.accent }]}>
-          <Ionicons name={salawat ? 'sparkles' : 'notifications'} size={20} color="#fff" />
+          <Ionicons name={salawat ? 'sparkles' : shown.kind === 'replies' ? 'chatbubbles' : 'notifications'} size={20} color="#fff" />
         </View>
         <View style={styles.flex}>
           <Txt size={14} bold color={salawat ? colors.gold : '#bcd6f2'}>{shown.title}</Txt>

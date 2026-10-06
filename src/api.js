@@ -3,26 +3,84 @@ import { Platform } from 'react-native';
 import { decodeCp1256 } from './cp1256';
 
 // The web build on the forum's own domain reads the forum from the same origin.
-// Elsewhere (the GitHub Pages preview) browsers block cross-site reads, so it reads
-// through the app's forum.php on al-amen.com, which allows the preview's origin.
+// Elsewhere (the GitHub Pages preview) browsers block cross-site reads, so it tries
+// the app's forum.php on al-amen.com, then public CORS proxies (guest pages only).
 const FORUM_URL = 'https://www.al-amen.com/vb/';
 const onForumSite = Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.location.hostname);
 export const BASE_URL = onForumSite ? `${window.location.origin}/vb/` : FORUM_URL;
-const readUrl =
-  Platform.OS === 'web' && !onForumSite
-    ? (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`
-    : (path) => BASE_URL + path;
+const PREVIEW_READERS = [
+  (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`,
+  (path) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(FORUM_URL + path)}`,
+  (path) => `https://api.allorigins.win/raw?url=${encodeURIComponent(FORUM_URL + path)}`,
+  (path) => `https://corsproxy.io/?url=${encodeURIComponent(FORUM_URL + path)}`,
+];
+const preview = Platform.OS === 'web' && !onForumSite;
+const PREVIEW_TIMEOUT_MS = 15000;
 export const POSTS_PER_PAGE = 40;
+export const THREADS_PER_PAGE = 50;
 
-async function fetchText(path) {
-  const res = await fetch(readUrl(path), {
+function hasReplacementChars(b) {
+  for (let i = 0; i + 2 < b.length; i++) {
+    if (b[i] === 0xef && b[i + 1] === 0xbf && b[i + 2] === 0xbd) return true;
+  }
+  return false;
+}
+
+async function readUrl(url, signal) {
+  const res = await fetch(url, {
     headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
     // No forum cookies in or out: the app reads as a guest, and the style choice
     // below must not stick to the visitor's normal browsing of the forum.
     credentials: Platform.OS === 'web' ? 'omit' : undefined,
+    signal,
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  return decodeCp1256(await res.arrayBuffer());
+  const bytes = await res.arrayBuffer();
+  // A proxy that re-read the windows-1256 page as UTF-8 leaves U+FFFD (EF BF BD) behind.
+  if (preview && hasReplacementChars(new Uint8Array(bytes))) throw new Error('garbled');
+  return decodeCp1256(bytes);
+}
+
+// The preview asks every reader at once and takes the first good answer, so one
+// slow or dead proxy never leaves the app waiting.
+async function raceReaders(path) {
+  const controllers = PREVIEW_READERS.map(() => new AbortController());
+  const timer = setTimeout(() => controllers.forEach((c) => c.abort()), PREVIEW_TIMEOUT_MS);
+  try {
+    return await Promise.any(PREVIEW_READERS.map((reader, i) => readUrl(reader(path), controllers[i].signal)));
+  } finally {
+    clearTimeout(timer);
+    controllers.forEach((c) => c.abort());
+  }
+}
+
+// Recent answers are reused for a minute, and a page already being fetched is not
+// asked for twice (alerts and screens often want the same page at the same time).
+const RECENT_MS = 60 * 1000;
+const recent = new Map(); // path -> {at, promise}
+
+async function fetchFresh(path) {
+  if (!preview) return readUrl(BASE_URL + path);
+  try {
+    return await raceReaders(path);
+  } catch {
+    // Free proxies fail now and then; one more round before giving up.
+    try {
+      return await raceReaders(path);
+    } catch {
+      throw new Error('تعذّر تحميل المحتوى، الخادم بطيء الآن. حاول مرة أخرى.');
+    }
+  }
+}
+
+function fetchText(path) {
+  const hit = recent.get(path);
+  if (hit && Date.now() - hit.at < RECENT_MS) return hit.promise;
+  const promise = fetchFresh(path);
+  recent.set(path, { at: Date.now(), promise });
+  promise.catch(() => recent.delete(path));
+  if (recent.size > 50) recent.delete(recent.keys().next().value);
+  return promise;
 }
 
 // vBulletin gives phones its "mobile style", whose pages the app cannot read, so ask
@@ -118,10 +176,12 @@ function lastPage(html, pattern) {
   return max;
 }
 
-// One page of a forum: its sub-forums (page 1 only) and its threads.
+// One page of a forum (THREADS_PER_PAGE threads): its sub-forums (page 1 only) and its threads.
 export async function getForum(forumId, page = 1) {
   // vBulletin redirects "&page=1" to the bare URL, so only send it for later pages.
-  const html = await fetchPage(`forumdisplay.php?f=${forumId}${page > 1 ? `&page=${page}` : ''}`);
+  const html = await fetchPage(
+    `forumdisplay.php?f=${forumId}&pp=${THREADS_PER_PAGE}${page > 1 ? `&page=${page}` : ''}`
+  );
   const title = html.match(/<title>([\s\S]*?)<\/title>/);
   const threads = [];
   const parts = html.split(/<li class="threadbit/).slice(1);
@@ -147,9 +207,10 @@ export async function getForum(forumId, page = 1) {
   const subforums = page === 1 ? parseForumRows(html) : [];
   return {
     title: title ? stripTags(title[1]).replace(/\s*-\s*شبكة الأمين السلفية\s*$/, '') : '',
+    page,
     subforums,
     threads,
-    lastPage: lastPage(html, `forumdisplay\\.php\\?f=${forumId}[^"]*?&amp;page=`),
+    lastPage: Math.max(page, lastPage(html, `forumdisplay\\.php\\?f=${forumId}[^"]*?&amp;page=`)),
   };
 }
 

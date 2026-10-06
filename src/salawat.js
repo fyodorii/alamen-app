@@ -1,4 +1,4 @@
-// Reminders to send blessings on the Prophet ﷺ, shown in rotation every 15 minutes.
+// Reminders to send blessings on the Prophet ﷺ, shown in rotation every SALAWAT_EVERY_MINUTES.
 // The server-side reminder (public/push/config.php) uses the same texts.
 export const SALAWAT = [
   'اللهم صلِّ وسلِّم وبارك على نبينا محمد ﷺ',
@@ -8,3 +8,4 @@ export const SALAWAT = [
 ];
 
 export const SALAWAT_TITLE = 'الصلاة على النبي ﷺ';
+export const SALAWAT_EVERY_MINUTES = 10;

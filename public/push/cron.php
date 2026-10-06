@@ -1,6 +1,6 @@
 <?php
-// Sends the scheduled notifications. Run it every 15 minutes (or more often for
-// quicker new-topic alerts; the salawat reminder keeps its own 15-minute spacing):
+// Sends the scheduled notifications. Run it every 5 minutes (new-topic alerts come
+// quicker; the salawat reminder keeps its own SALAWAT_EVERY_MINUTES spacing):
 //   php /path/to/app/push/cron.php
 //   or: wget -q -O - "https://www.al-amen.com/app/push/cron.php?key=CRON_KEY"
 require __DIR__ . '/lib.php';
@@ -47,7 +47,7 @@ if ($threads) {
     $state['last_thread_id'] = max($last, $newest);
 }
 
-// Salawat reminder (a minute of slack so a 15-minute cron never skips one).
+// Salawat reminder (a minute of slack so the cron never skips one).
 $lastSalawat = isset($state['last_salawat']) ? (int) $state['last_salawat'] : 0;
 // An empty push carries no text, so without encryption send at most one message per run.
 $roomForSalawat = can_encrypt() || !$outbox;

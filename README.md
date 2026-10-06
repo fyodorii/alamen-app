@@ -139,17 +139,18 @@ npm run build:web
 |---|---|
 | `config.php` | الإعدادات: البريد، رابط المنتدى، مفتاح cron، نصوص الصلاة على النبي ﷺ |
 | `check.php` | صفحة فحص: افتحها بعد الرفع للتأكد أن كل شيء يعمل |
-| `cron.php` | يرسل التنبيهات؛ يُشغَّل كل 15 دقيقة |
+| `cron.php` | يرسل التنبيهات؛ يُشغَّل كل 5 دقائق |
 | `subscribe.php` / `key.php` / `pending.php` | يستعملها التطبيق |
 | `data/` | الاشتراكات والمفاتيح، محمي بـ `.htaccess` ويجب أن يكون قابلاً للكتابة |
 
-مهمة cron (من cPanel ← Cron Jobs، كل 15 دقيقة):
+مهمة cron (من cPanel ← Cron Jobs، كل 5 دقائق). تذكير الصلاة على النبي ﷺ كل 10 دقائق:
+اجعل `SALAWAT_EVERY_MINUTES` في `push/config.php` على الخادم = 10.
 ```
-*/15 * * * * php /home/اسم-المستخدم/public_html/app/push/cron.php
+*/5 * * * * php /home/اسم-المستخدم/public_html/app/push/cron.php
 ```
 أو إن لم يتوفر php من سطر الأوامر:
 ```
-*/15 * * * * wget -q -O /dev/null "https://www.al-amen.com/app/push/cron.php?key=CRON_KEY"
+*/5 * * * * wget -q -O /dev/null "https://www.al-amen.com/app/push/cron.php?key=CRON_KEY"
 ```
 (`CRON_KEY` من `config.php`.)
 

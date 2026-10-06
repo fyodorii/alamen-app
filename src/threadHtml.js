@@ -18,6 +18,11 @@ function fontHead() {
 <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">`;
 }
 
+const svg = (path) =>
+  `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+const ICON_SHARE = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
+const ICON_FLAG = svg('<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>');
+
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldText, offline, baseUrl }) {
@@ -28,20 +33,21 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
   const postHtml = (p, i) => {
     const av = avatarFor(p.author);
     const n = firstNumber + i;
+    const byOpener = opener && page === 1 && p.author === opener.author;
     return `
       <article class="post${n === 1 ? ' opening' : ''}">
         <header>
           <span class="avatar" style="background:${av.color}">${esc(av.letter)}</span>
           <span class="who">
-            <span class="author">${esc(p.author)}</span>
+            <span class="author">${esc(p.author)}${byOpener ? '<span class="badge">كاتب الموضوع</span>' : ''}</span>
             <span class="date">${esc(formatForumDate(p.date))}</span>
           </span>
           <span class="num">#${n}</span>
         </header>
         <div class="content">${p.html}</div>
         <footer>
-          <a href="#" data-share="1" class="action">⤴ مشاركة</a>
-          <a href="#" data-report="${i}" class="action muted">⚑ إبلاغ</a>
+          <a href="#" data-share="1" class="btn">${ICON_SHARE}<span>مشاركة</span></a>
+          <a href="#" data-report="${i}" class="btn report">${ICON_FLAG}<span>إبلاغ</span></a>
         </footer>
       </article>`;
   };
@@ -53,9 +59,9 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
   const pager =
     !offline && thread.lastPage > 1
       ? `<nav class="pager">
-          ${page < thread.lastPage ? `<a href="#" data-page="${page + 1}">الصفحة التالية ‹</a>` : '<span></span>'}
-          <span>صفحة ${page} من ${thread.lastPage}</span>
-          ${page > 1 ? `<a href="#" data-page="${page - 1}">› السابقة</a>` : '<span></span>'}
+          ${page > 1 ? `<a href="#" data-page="${page - 1}">› السابقة</a>` : '<span class="off">› السابقة</span>'}
+          <span class="where">صفحة ${page} من ${thread.lastPage}</span>
+          ${page < thread.lastPage ? `<a href="#" data-page="${page + 1}">التالية ‹</a>` : '<span class="off">التالية ‹</span>'}
         </nav>`
       : '';
 
@@ -88,20 +94,24 @@ ${fontHead()}
   .title h1 { font-size: 1.35em; line-height: 1.75; margin: 4px 0 6px; font-weight: 700; }
   .title .meta { font-size: 0.72em; opacity: 0.85; line-height: 1.6; }
 
-  .post { background: ${colors.card}; border: 1px solid ${colors.border}; border-radius: 18px; padding: 12px 16px 8px;
-          margin-bottom: 14px; box-shadow: 0 3px 10px rgba(15,37,64,${dark ? '0.3' : '0.06'}); }
+  .post { background: ${colors.card}; border: 1px solid ${colors.border}; border-radius: 18px; padding: 12px 16px 10px;
+          margin-bottom: 12px; box-shadow: 0 3px 10px rgba(15,37,64,${dark ? '0.3' : '0.06'}); }
   .post.opening { border-top: 4px solid ${colors.gold}; }
-  .post header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid ${colors.border}; padding-bottom: 10px; margin-bottom: 8px; }
+  .post header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid ${colors.border}; padding-bottom: 8px; margin-bottom: 6px; }
   .avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; color: #fff; display: flex; align-items: center;
             justify-content: center; font-weight: 700; font-size: 20px; line-height: 1; }
   .who { flex: 1; display: flex; flex-direction: column; min-width: 0; line-height: 1.5; }
   .author { font-weight: 700; color: ${colors.primary}; font-size: 0.82em; }
+  .badge { display: inline-block; margin-inline-start: 6px; padding: 0 8px; border-radius: 999px; font-size: 0.72em;
+           background: ${colors.goldSoft}; color: ${colors.gold}; vertical-align: middle; line-height: 1.7; }
   .date { color: ${colors.muted}; font-size: 0.62em; }
   .num { flex: none; color: ${colors.primary}; background: ${colors.primarySoft}; border-radius: 999px; padding: 0 10px;
          font-size: 0.62em; font-weight: 700; direction: ltr; }
-  .post footer { display: flex; gap: 18px; justify-content: flex-start; border-top: 1px dashed ${colors.border}; margin-top: 10px; padding-top: 4px; }
-  .action { color: ${colors.accent} !important; font-size: 0.68em; text-decoration: none; font-weight: 700; }
-  .action.muted { color: ${colors.muted} !important; font-weight: 400; }
+  .post footer { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid ${colors.border}; margin-top: 10px; padding-top: 8px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; text-decoration: none;
+         font-size: 0.66em; font-weight: 700; line-height: 2.2; color: ${colors.accent} !important; background: ${colors.accentSoft}; }
+  .btn svg { font-size: 1.05em; }
+  .btn.report { color: ${colors.danger} !important; background: ${colors.dangerSoft}; }
 
   /* Old forum markup sets fixed fonts and sizes; let the reader's settings win. */
   .content * { font-family: inherit !important; font-size: inherit !important; line-height: inherit !important; }
@@ -119,10 +129,16 @@ ${fontHead()}
   .divider { display: flex; align-items: center; gap: 12px; color: ${colors.primary}; font-weight: 700; font-size: 0.85em; margin: 6px 4px 14px; }
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: ${colors.border}; }
 
-  .pager { display: flex; justify-content: space-between; align-items: center; margin: 16px 0; font-size: 0.75em; color: ${colors.muted}; }
-  .pager a { background: ${colors.primary}; color: #fff; text-decoration: none; padding: 4px 16px; border-radius: 12px; }
-  .share-all { display: block; text-align: center; background: linear-gradient(135deg, ${colors.heroFrom}, ${colors.heroTo});
-               color: #fff !important; text-decoration: none; border-radius: 16px; padding: 8px; font-weight: 700; margin-top: 6px; }
+  .pager { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0 14px; font-size: 0.72em;
+           background: ${colors.card}; border: 1px solid ${colors.border}; border-radius: 16px; padding: 6px; }
+  .pager a, .pager .off { background: ${colors.primary}; color: #fff; text-decoration: none; padding: 2px 14px; border-radius: 12px; font-weight: 700; }
+  .pager .off { background: ${colors.border}; color: ${colors.muted}; }
+  .pager .where { color: ${colors.muted}; }
+  .end { display: flex; gap: 10px; margin-top: 6px; }
+  .end a { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; border-radius: 16px;
+           padding: 6px; font-weight: 700; font-size: 0.85em; }
+  .share-all { background: linear-gradient(135deg, ${colors.heroFrom}, ${colors.heroTo}); color: #fff !important; }
+  .report-all { background: ${colors.dangerSoft}; color: ${colors.danger} !important; flex: 0 0 auto !important; padding: 6px 18px !important; }
   .offline { text-align: center; color: ${colors.muted}; font-size: 0.7em; margin-bottom: 10px; }
 </style>
 </head>
@@ -132,7 +148,10 @@ ${fontHead()}
   ${pager}
   ${posts}
   ${pager}
-  <a href="#" data-share="1" class="share-all">شارك هذا الموضوع ⤴</a>
+  <div class="end">
+    <a href="#" data-share="1" class="share-all">${ICON_SHARE}<span>شارك هذا الموضوع</span></a>
+    <a href="#" data-report="topic" class="report-all">${ICON_FLAG}<span>إبلاغ</span></a>
+  </div>
 <script>
   // In the web build the page lives in an iframe instead of a native WebView.
   function send(msg) {
@@ -144,7 +163,7 @@ ${fontHead()}
     var a = e.target.closest('a');
     if (!a) return;
     if (a.dataset.page) send({ type: 'page', page: +a.dataset.page });
-    else if (a.dataset.report) send({ type: 'report', index: +a.dataset.report });
+    else if (a.dataset.report) send({ type: 'report', index: a.dataset.report === 'topic' ? null : +a.dataset.report });
     else if (a.dataset.share) send({ type: 'share' });
     else if (a.href && a.getAttribute('href').charAt(0) !== '#') send({ type: 'link', url: a.href });
     else return;

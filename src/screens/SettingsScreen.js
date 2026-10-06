@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BASE_URL } from '../api';
+import { BASE_URL, getForumIndex } from '../api';
 import { useAlerts } from '../alerts';
-import { CONTACT_EMAIL } from '../config';
 import { disablePush, enablePush, isIOS, isStandalone, updatePushTopics } from '../push';
 import { useApp } from '../store';
-import { SectionHeader, Txt, notify } from '../ui';
+import { SectionHeader, Txt, notify, openMail, useLoader } from '../ui';
 
 const FONT_SIZES = [
   { label: 'صغير', value: 0.9 },
@@ -73,6 +72,83 @@ function Row({ icon, label, onPress }) {
   );
 }
 
+// Choosing the forum whose new replies raise an alert (sub-forums included).
+function ForumPicker({ visible, current, onPick, onClose }) {
+  const { colors } = useApp();
+  const { data } = useLoader(getForumIndex, [], 'forums');
+  const items = [];
+  for (const cat of data ?? []) {
+    items.push({ key: `cat${cat.id}`, header: cat.title });
+    for (const f of cat.forums) {
+      items.push({ key: f.id, id: f.id, title: f.title });
+      for (const sub of f.subforums) items.push({ key: sub.id, id: sub.id, title: sub.title, sub: true });
+    }
+  }
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={[styles.sheet, { backgroundColor: colors.bg }]}>
+        <Txt size={20} bold style={styles.center}>اختر القسم</Txt>
+        <Txt size={14} color={colors.muted} style={styles.center}>يصلك تنبيه عند كل رد جديد في مواضيعه</Txt>
+        {data ? (
+          <FlatList
+            data={items}
+            keyExtractor={(i) => i.key}
+            renderItem={({ item }) =>
+              item.header ? (
+                <Txt size={15} bold color={colors.gold} style={styles.pickHeader}>{item.header}</Txt>
+              ) : (
+                <Pressable
+                  onPress={() => onPick({ id: item.id, title: item.title })}
+                  style={[styles.pickRow, { borderColor: colors.border, backgroundColor: current?.id === item.id ? colors.primarySoft : colors.card }, item.sub && styles.pickSub]}
+                >
+                  <Ionicons name={current?.id === item.id ? 'checkmark-circle' : item.sub ? 'folder-open-outline' : 'library-outline'} size={20} color={colors.primary} />
+                  <Txt size={17} style={styles.flex}>{item.title}</Txt>
+                </Pressable>
+              )
+            }
+          />
+        ) : (
+          <ActivityIndicator style={{ margin: 30 }} color={colors.primary} />
+        )}
+        <Pressable onPress={onClose} style={[styles.deviceBtn, { backgroundColor: colors.primary, marginTop: 8 }]}>
+          <Txt size={17} bold color="#fff" style={styles.center}>إغلاق</Txt>
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+function RepliesRow({ forum, onChange }) {
+  const { colors } = useApp();
+  const [picking, setPicking] = useState(false);
+  return (
+    <View style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Ionicons name="chatbubbles-outline" size={22} color={colors.primary} />
+      <Pressable style={styles.flex} onPress={() => setPicking(true)}>
+        <Txt size={18}>تنبيه بالردود في قسم</Txt>
+        <Txt size={14} color={forum ? colors.accent : colors.muted}>{forum ? forum.title : 'اضغط لاختيار القسم'}</Txt>
+      </Pressable>
+      <Switch
+        value={!!forum}
+        onValueChange={(on) => (on ? setPicking(true) : onChange(null))}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor="#fff"
+        activeThumbColor="#fff"
+      />
+      <ForumPicker
+        visible={picking}
+        current={forum}
+        onClose={() => setPicking(false)}
+        onPick={(f) => {
+          onChange(f);
+          setPicking(false);
+        }}
+      />
+    </View>
+  );
+}
+
 function DeviceNotifications() {
   const { colors, settings } = useApp();
   const { pushActive, refreshPush } = useAlerts();
@@ -83,7 +159,7 @@ function DeviceNotifications() {
     setBusy(true);
     try {
       if (pushActive) await disablePush();
-      else await enablePush({ news: settings.notifyNew, salawat: settings.salawat });
+      else await enablePush({ news: settings.notifyNew, salawat: settings.salawat, sound: settings.sound });
     } catch (e) {
       notify('الإشعارات', PUSH_ERRORS[e.message] ?? 'تعذّر الاتصال بخادم الإشعارات. حاول لاحقاً.');
     }
@@ -123,14 +199,14 @@ function DeviceNotifications() {
 
 export default function SettingsScreen() {
   const { colors, settings, updateSettings } = useApp();
-  const { pushActive } = useAlerts();
+  const { pushActive, testAlerts } = useAlerts();
 
   // Keep the server (or the phone's schedule) in step with the alert switches.
   const setAlert = (patch) => {
     updateSettings(patch);
     if (pushActive) {
       const next = { ...settings, ...patch };
-      updatePushTopics({ news: next.notifyNew, salawat: next.salawat }).catch(() => {});
+      updatePushTopics({ news: next.notifyNew, salawat: next.salawat, sound: next.sound }).catch(() => {});
     }
   };
 
@@ -160,10 +236,19 @@ export default function SettingsScreen() {
       <ToggleRow
         icon="sparkles-outline"
         label="تذكير بالصلاة على النبي ﷺ"
-        hint="كل 15 دقيقة"
+        hint="كل 10 دقائق"
         value={settings.salawat}
         onChange={(v) => setAlert({ salawat: v })}
       />
+      <RepliesRow forum={settings.repliesForum} onChange={(f) => updateSettings({ repliesForum: f })} />
+      <ToggleRow
+        icon="musical-note-outline"
+        label="صوت التنبيهات"
+        hint="نغمة خفيفة مع كل تنبيه"
+        value={settings.sound}
+        onChange={(v) => setAlert({ sound: v })}
+      />
+      <Row icon="notifications-outline" label="تجربة التنبيهات" onPress={testAlerts} />
       <DeviceNotifications />
 
       <SectionHeader>المظهر</SectionHeader>
@@ -172,7 +257,7 @@ export default function SettingsScreen() {
       <SectionHeader>الموقع</SectionHeader>
       <Row icon="globe-outline" label="فتح الموقع في المتصفح" onPress={() => WebBrowser.openBrowserAsync(BASE_URL)} />
       <Row icon="person-add-outline" label="التسجيل أو الدخول للمشاركة" onPress={() => WebBrowser.openBrowserAsync(BASE_URL + 'register.php')} />
-      <Row icon="mail-outline" label="مراسلة إدارة الشبكة" onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)} />
+      <Row icon="mail-outline" label="مراسلة إدارة الشبكة" onPress={() => openMail()} />
 
       <Txt size={15} color={colors.muted} style={[styles.center, { marginTop: 30 }]}>
         شبكة الأمين السلفية{'\n'}الإصدار {Constants.expoConfig?.version ?? ''}
@@ -191,4 +276,9 @@ const styles = StyleSheet.create({
   rowInner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   deviceBox: { marginHorizontal: 12, marginVertical: 6, padding: 14, borderRadius: 16, borderWidth: 1, gap: 10 },
   deviceBtn: { borderRadius: 12, paddingVertical: 6, alignItems: 'center' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: { maxHeight: '75%', paddingTop: 14, paddingHorizontal: 12, paddingBottom: 24, borderTopLeftRadius: 22, borderTopRightRadius: 22 },
+  pickHeader: { marginTop: 12, marginBottom: 2, marginHorizontal: 6 },
+  pickRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginVertical: 3, paddingHorizontal: 14, paddingVertical: 4, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  pickSub: { marginRight: 22 },
 });
