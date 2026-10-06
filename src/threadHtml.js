@@ -1,6 +1,7 @@
 // Builds the HTML document shown in the thread reader (WebView on iOS, iframe on the web).
 import { Platform } from 'react-native';
 import { formatForumDate, POSTS_PER_PAGE } from './api';
+import { reportMailto } from './report';
 import { avatarFor } from './theme';
 
 // The web build serves its own small Amiri files (already cached by the app);
@@ -23,9 +24,34 @@ const svg = (path) =>
 const ICON_SHARE = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
 const ICON_FLAG = svg('<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>');
 
+const ICON_CLIP = svg('<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/>');
+const ICON_FILE = svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>');
+const ICON_AUDIO = svg('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>');
+const ICON_OPEN = svg('<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>');
+
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldText, offline, baseUrl }) {
+// A post's attachments: images as pictures, audio with a player, other files as cards.
+function attachmentsHtml(list) {
+  if (!list?.length) return '';
+  const items = list
+    .map((a) => {
+      const url = esc(a.url);
+      const meta = a.size ? `<span class="att-size">${esc(a.size)}</span>` : '';
+      if (a.kind === 'image') return `<a href="${url}" class="att-img"><img src="${url}" loading="lazy" alt="${esc(a.name)}"></a>`;
+      if (a.kind === 'audio')
+        return `<div class="att-file">${ICON_AUDIO}<span class="att-name">${esc(a.name)}${meta}</span><a href="${url}" class="att-open">${ICON_OPEN}</a></div>
+          <audio controls preload="none" src="${url}"></audio>`;
+      return `<a href="${url}" class="att-file">${ICON_FILE}<span class="att-name">${esc(a.name)}${meta}</span><span class="att-open">${ICON_OPEN}</span></a>`;
+    })
+    .join('');
+  return `<section class="atts"><div class="atts-title">${ICON_CLIP}<span>المرفقات (${list.length})</span></div>${items}</section>`;
+}
+
+export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldText, offline, baseUrl, url }) {
+  // Report buttons are real mailto: links, so the tap itself opens the mail app
+  // (Safari ignores mailto: opened later from a message the page sends).
+  const reportHref = (post) => esc(reportMailto({ title: thread.title, url, page, post }));
   const base = Math.round(21 * fontScale);
   const firstNumber = (page - 1) * POSTS_PER_PAGE + 1;
   const opener = thread.posts[0];
@@ -45,9 +71,10 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
           <span class="num">#${n}</span>
         </header>
         <div class="content">${p.html}</div>
+        ${attachmentsHtml(p.attachments)}
         <footer>
           <a href="#" data-share="1" class="btn">${ICON_SHARE}<span>مشاركة</span></a>
-          <a href="#" data-report="${i}" class="btn report">${ICON_FLAG}<span>إبلاغ</span></a>
+          <a href="${reportHref(p)}" target="_top" data-report="${i}" class="btn report">${ICON_FLAG}<span>إبلاغ</span></a>
         </footer>
       </article>`;
   };
@@ -78,6 +105,7 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
 <base href="${baseUrl}">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4">
 ${fontHead()}
@@ -118,7 +146,20 @@ ${fontHead()}
   .content b, .content strong { font-weight: 700; }
   ${boldText ? '.content * { font-weight: 700 !important; }' : ''}
   ${dark ? '.content * { color: inherit !important; background-color: transparent !important; }' : ''}
-  .content img { max-width: 100%; height: auto; border-radius: 8px; }
+  .content img { max-width: 100%; height: auto; border-radius: 8px; vertical-align: middle; }
+  .content .imglink { display: inline-block; }
+
+  .atts { margin-top: 10px; padding: 8px 10px; border-radius: 14px; background: ${colors.bg}; border: 1px solid ${colors.border}; }
+  .atts-title { display: flex; align-items: center; gap: 6px; color: ${colors.primary}; font-weight: 700; font-size: 0.7em; margin-bottom: 4px; }
+  .att-img { display: block; margin: 6px 0; }
+  .att-img img { display: block; max-width: 100%; height: auto; border-radius: 10px; border: 1px solid ${colors.border}; }
+  .att-file { display: flex; align-items: center; gap: 10px; margin: 6px 0; padding: 4px 12px; border-radius: 12px; text-decoration: none;
+              background: ${colors.card}; border: 1px solid ${colors.border}; color: ${colors.text} !important; font-size: 0.72em; line-height: 1.7; }
+  .att-file > svg { flex: none; font-size: 1.4em; color: ${colors.accent}; }
+  .att-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .att-size { display: block; color: ${colors.muted}; font-size: 0.85em; }
+  .att-open { flex: none; color: ${colors.accent} !important; font-size: 1.3em; display: flex; }
+  .atts audio { display: block; width: 100%; height: 40px; margin: 2px 0 6px; }
   .content iframe, .content video { width: 100% !important; max-width: 100%; border: 0; border-radius: 12px; }
   .content audio { width: 100%; }
   .content blockquote { margin: 0; }
@@ -150,7 +191,7 @@ ${fontHead()}
   ${pager}
   <div class="end">
     <a href="#" data-share="1" class="share-all">${ICON_SHARE}<span>شارك هذا الموضوع</span></a>
-    <a href="#" data-report="topic" class="report-all">${ICON_FLAG}<span>إبلاغ</span></a>
+    <a href="${reportHref(null)}" target="_top" data-report="topic" class="report-all">${ICON_FLAG}<span>إبلاغ</span></a>
   </div>
 <script>
   // In the web build the page lives in an iframe instead of a native WebView.
@@ -159,11 +200,21 @@ ${fontHead()}
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(data);
     else window.parent.postMessage({ alamen: data }, '*');
   }
+  // A posted image that does not load (gone, or not a picture) shows as its link again.
+  document.addEventListener('error', function (e) {
+    var img = e.target;
+    if (img.tagName !== 'IMG' || !img.parentNode.classList.contains('imglink')) return;
+    img.parentNode.textContent = img.getAttribute('data-text') || img.src;
+  }, true);
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a');
     if (!a) return;
     if (a.dataset.page) send({ type: 'page', page: +a.dataset.page });
-    else if (a.dataset.report) send({ type: 'report', index: a.dataset.report === 'topic' ? null : +a.dataset.report });
+    else if (a.dataset.report) {
+      // In the browser the mailto: link opens the mail app by itself.
+      if (!window.ReactNativeWebView) return;
+      send({ type: 'report', index: a.dataset.report === 'topic' ? null : +a.dataset.report });
+    }
     else if (a.dataset.share) send({ type: 'share' });
     else if (a.href && a.getAttribute('href').charAt(0) !== '#') send({ type: 'link', url: a.href });
     else return;

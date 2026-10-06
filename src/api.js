@@ -103,7 +103,7 @@ async function fetchPage(path) {
   return html;
 }
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rlm: '\u200f', lrm: '\u200e' };
 
 export function decodeEntities(s) {
   return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
@@ -214,6 +214,59 @@ export async function getForum(forumId, page = 1) {
   };
 }
 
+// The print view turns posted images ([IMG]) into links whose text is the
+// (shortened) address; show those as images again. Links with real words stay links.
+// Forum attachments (attachment.php, here or on other forums) count too: [IMG] of
+// one shows its address; if it turns out not to be a picture, the page shows the link.
+const IMAGE_URL = /\.(jpe?g|png|gif|webp|bmp)(?:[?#&]|$)|\/picture\.php\?|\/emoji\.php\/|\/attachment\.php\?/i;
+
+function showImages(html) {
+  return html.replace(/<a href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (link, href, text) => {
+    const t = decodeEntities(text).trim();
+    const looksLikeAddress = !t || /^(https?:\/\/|www\.)/i.test(t);
+    if (!looksLikeAddress || !IMAGE_URL.test(decodeEntities(href))) return link;
+    return `<a href="${href}" class="imglink"><img src="${href}" loading="lazy" alt="" data-text="${text}"></a>`;
+  });
+}
+
+const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus)$/i;
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp)$/i;
+
+// Attachments are listed only on the full thread page, one block per post.
+// The same page size (pp) keeps its posts in step with the print view's.
+async function getAttachments(threadId, page) {
+  const html = await fetchPage(`showthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}${page > 1 ? `&page=${page}` : ''}`);
+  return html
+    .split(/<li[^>]*\sid="post_\d+"/)
+    .slice(1)
+    .map((part) => {
+      const start = part.indexOf('<div class="attachments">');
+      if (start < 0) return [];
+      const block = part.slice(start); // a post's attachment list follows its text
+      const found = new Map();
+      const re = /<a href="attachment\.php\?[^"]*?attachmentid=(\d+)(?:&amp;d=(\d+))?[^"]*"[^>]*>([\s\S]*?)<\/a>\s*(\([^)<]*\))?/g;
+      let m;
+      while ((m = re.exec(block))) {
+        const [, id, d, inner, info] = m;
+        const alt = inner.match(/alt="([^"]*)"/);
+        // Image thumbnails carry their name in alt ("الاسم: x.jpg" and more lines).
+        const fromAlt = alt ? alt[1].split(/&#13;|&#10;|[\r\n]/)[0] : '';
+        const name = (stripTags(inner) || decodeEntities(fromAlt).replace(/^[^:]*:\s*/, '')).replace(/[\u200e\u200f]/g, '').trim();
+        const thumb = /class="thumbnail"/.test(inner);
+        const prev = found.get(id);
+        if (prev && prev.name) continue;
+        found.set(id, {
+          id,
+          name: name || `مرفق ${id}`,
+          size: info ? stripTags(info).replace(/^\(|\)$/g, '').split(/[,،]/)[0].trim() : '',
+          url: `${BASE_URL}attachment.php?attachmentid=${id}${d ? `&d=${d}` : ''}`,
+          kind: thumb || IMAGE_EXT.test(name) ? 'image' : AUDIO_EXT.test(name) ? 'audio' : 'file',
+        });
+      }
+      return [...found.values()];
+    });
+}
+
 // One page of a thread, using vBulletin's lightweight print view.
 export async function getThread(threadId, page = 1) {
   const html = await fetchPage(`printthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}&page=${page}`);
@@ -223,6 +276,7 @@ export async function getThread(threadId, page = 1) {
   for (const part of parts) {
     const date = part.match(/<div class="datetime">([\s\S]*?)<\/div>/);
     const user = part.match(/<span class="username">([\s\S]*?)<\/span>/);
+    const attached = part.match(/<div class="attachments">\s*(\d+)/);
     const start = part.indexOf('<div class="content">');
     let content = '';
     if (start >= 0) {
@@ -236,10 +290,21 @@ export async function getThread(threadId, page = 1) {
     posts.push({
       author: user ? stripTags(user[1]) : '',
       date: date ? stripTags(date[1]) : '',
-      html: content,
+      html: showImages(content),
+      attachmentCount: attached ? +attached[1] : 0,
+      attachments: [],
     });
   }
   if (!posts.length) throw new Error('لم يتم العثور على الموضوع أو أنه يحتاج إلى تسجيل الدخول');
+  if (posts.some((p) => p.attachmentCount)) {
+    try {
+      const lists = await getAttachments(threadId, page);
+      // Only trust the pairing when both pages list the same number of posts.
+      if (lists.length === posts.length) lists.forEach((list, i) => (posts[i].attachments = list));
+    } catch {
+      // The thread still reads fine without its attachments.
+    }
+  }
   return {
     title: title ? stripTags(title[1]) : '',
     posts,

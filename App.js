@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform, View } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -49,11 +50,26 @@ function Tabs() {
         headerTitleAlign: 'center',
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        // Amiri is taller than the system font, so the tab bar needs extra height for its labels.
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, height: 62 + insets.bottom, paddingTop: 4 },
-        tabBarLabelStyle: { fontFamily: fonts.bold, fontSize: 13, lineHeight: 22 },
-        tabBarIcon: ({ color, size, focused }) => (
-          <Ionicons name={TAB_ICONS[route.name] + (focused ? '' : '-outline')} size={size} color={color} />
+        // A tall bar with rounded top corners; Amiri needs room for its labels.
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopWidth: 0,
+          height: 78 + insets.bottom,
+          paddingTop: 8,
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          ...Platform.select({
+            ios: { shadowColor: '#0f2540', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: -3 } },
+            android: { elevation: 12 },
+            default: { boxShadow: '0 -4px 16px rgba(15,37,64,0.12)' },
+          }),
+        },
+        tabBarLabelStyle: { fontFamily: fonts.bold, fontSize: 14, lineHeight: 24 },
+        // The active tab's icon sits in a soft pill.
+        tabBarIcon: ({ color, focused }) => (
+          <View style={{ paddingHorizontal: 18, paddingVertical: 3, borderRadius: 14, backgroundColor: focused ? colors.primarySoft : 'transparent' }}>
+            <Ionicons name={TAB_ICONS[route.name] + (focused ? '' : '-outline')} size={26} color={color} />
+          </View>
         ),
       })}
     >

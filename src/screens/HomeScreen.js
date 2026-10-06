@@ -20,7 +20,7 @@ function formatDate(date, locale, options) {
   }
 }
 
-// Compact clock that sits in the header row, beside the network's name.
+// The clock and both calendars, in a glass panel under the network's name.
 function Clock() {
   const { colors } = useApp();
   const [now, setNow] = useState(() => new Date());
@@ -30,18 +30,23 @@ function Clock() {
   }, []);
 
   const h = now.getHours();
-  const gregorian = formatDate(now, 'ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
+  const weekday = formatDate(now, 'ar-EG-u-nu-latn', { weekday: 'long' });
+  const gregorian = formatDate(now, 'ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
   const hijri = formatDate(now, 'ar-SA-u-nu-latn', { calendar: 'islamic-umalqura', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <View style={styles.clock}>
+    <View style={styles.panel}>
+      <View style={styles.dates}>
+        <Text style={[font(17, { bold: true }), styles.weekday]} numberOfLines={1}>{weekday}</Text>
+        <Text style={[font(13), styles.date]} numberOfLines={1}>{gregorian}</Text>
+        {hijri ? <Text style={[font(13, { bold: true }), styles.date, { color: colors.gold }]} numberOfLines={1}>{hijri}</Text> : null}
+      </View>
+      <View style={[styles.panelRule, { backgroundColor: 'rgba(214,180,92,0.45)' }]} />
       {/* Digits read left to right even inside Arabic text. */}
       <View style={styles.timeRow}>
-        <Text style={[font(22, { bold: true }), styles.time]}>{`${pad(h % 12 || 12)}:${pad(now.getMinutes())}`}</Text>
-        <Text style={[font(12, { bold: true }), { color: colors.gold }]}>{h < 12 ? 'ص' : 'م'}</Text>
+        <Text style={[font(34, { bold: true }), styles.time]}>{`${pad(h % 12 || 12)}:${pad(now.getMinutes())}`}</Text>
+        <Text style={[font(16, { bold: true }), { color: colors.gold }]}>{h < 12 ? 'ص' : 'م'}</Text>
       </View>
-      <Text style={[font(11), styles.date]} numberOfLines={1}>{gregorian}</Text>
-      {hijri ? <Text style={[font(11), styles.date, { color: colors.gold }]} numberOfLines={1}>{hijri}</Text> : null}
     </View>
   );
 }
@@ -55,16 +60,20 @@ function Hero() {
       colors={[colors.heroFrom, colors.heroTo]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.hero, { paddingTop: insets.top + 10 }]}
+      style={[styles.hero, { paddingTop: insets.top + 18 }]}
     >
+      {/* A faint large copy of the emblem as a watermark. */}
+      <Image source={require('../../assets/logo-mark.png')} style={styles.watermark} />
       <View style={styles.brand}>
-        <Image source={require('../../assets/logo-mark.png')} style={styles.logo} />
-        <View style={styles.brandText}>
-          <Txt size={21} bold color="#fff">شبكة الأمين السلفية</Txt>
-          <Txt size={13} color="rgba(255,255,255,0.75)" numberOfLines={1}>منابر علمية · دروس · فتاوى</Txt>
+        <View style={[styles.logoRing, { borderColor: colors.gold }]}>
+          <Image source={require('../../assets/logo-mark.png')} style={styles.logo} />
         </View>
-        <Clock />
+        <View style={styles.brandText}>
+          <Txt size={28} bold color="#fff" numberOfLines={1}>شبكة الأمين السلفية</Txt>
+          <Txt size={15} color={colors.gold} numberOfLines={1}>منابر علمية · دروس · فتاوى</Txt>
+        </View>
       </View>
+      <Clock />
     </LinearGradient>
   );
 }
@@ -103,22 +112,28 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingHorizontal: 14, paddingBottom: 14, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
-  brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  hero: { paddingHorizontal: 16, paddingBottom: 18, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden' },
+  watermark: { position: 'absolute', width: 230, height: 230, left: -50, top: -20, opacity: 0.07 },
+  brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   brandText: { flex: 1 },
-  logo: { width: 54, height: 54 },
-  clock: {
+  logoRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  logo: { width: 70, height: 70 },
+  panel: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    borderRadius: 14,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(214,180,92,0.45)',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    minWidth: 104,
+    borderColor: 'rgba(214,180,92,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  timeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, direction: 'ltr' },
-  time: { color: '#fff', letterSpacing: 0.5 },
-  date: { color: 'rgba(255,255,255,0.85)', textAlign: 'center', lineHeight: 17 },
+  dates: { flex: 1 },
+  weekday: { color: '#fff', textAlign: 'right' },
+  date: { color: 'rgba(255,255,255,0.85)', textAlign: 'right', lineHeight: 22 },
+  panelRule: { width: 1, alignSelf: 'stretch', marginHorizontal: 14 },
+  timeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, direction: 'ltr' },
+  time: { color: '#fff', letterSpacing: 1 },
   loading: { marginTop: 40 },
 });
