@@ -113,7 +113,7 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   hero: { paddingHorizontal: 16, paddingBottom: 18, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, overflow: 'hidden' },
-  watermark: { position: 'absolute', width: 230, height: 230, left: -50, top: -20, opacity: 0.07 },
+  watermark: { position: 'absolute', width: 230, height: 230, left: -60, top: -40, opacity: 0.045 },
   brand: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
   brandText: { flex: 1 },
   logoRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
