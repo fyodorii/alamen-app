@@ -2,7 +2,9 @@ import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Tex
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { CONTACT_EMAIL } from './config';
+import { forumLook } from './forumStyle';
 import { useApp } from './store';
 import { avatarFor, font, rtl } from './theme';
 
@@ -137,8 +139,9 @@ export function Avatar({ name, size = 34 }) {
   );
 }
 
-function CardShell({ onPress, onLongPress, highlight, children }) {
+function CardShell({ onPress, onLongPress, highlight, accent, style, children }) {
   const { colors } = useApp();
+  const edge = accent ?? (highlight ? colors.gold : null);
   return (
     <Pressable
       onPress={onPress}
@@ -148,10 +151,12 @@ function CardShell({ onPress, onLongPress, highlight, children }) {
         {
           backgroundColor: colors.card,
           borderColor: highlight ? colors.gold : colors.border,
-          borderRightWidth: highlight ? 4 : StyleSheet.hairlineWidth,
-          opacity: pressed ? 0.8 : 1,
+          borderRightColor: edge ?? colors.border,
+          borderRightWidth: edge ? 5 : StyleSheet.hairlineWidth,
+          opacity: pressed ? 0.85 : 1,
           transform: [{ scale: pressed ? 0.99 : 1 }],
         },
+        style,
       ]}
     >
       {children}
@@ -159,33 +164,45 @@ function CardShell({ onPress, onLongPress, highlight, children }) {
   );
 }
 
+// Darker shade of a #rrggbb color, for the far end of a gradient.
+function shade(hex, f = 0.7) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = (v) => Math.round(v * f).toString(16).padStart(2, '0');
+  return `#${c(n >> 16)}${c((n >> 8) & 255)}${c(n & 255)}`;
+}
+
+// A forum: its own icon and color, large title, counts and sub-forums.
 export function ForumCard({ forum, onPress, onSubPress }) {
-  const { colors } = useApp();
+  const { colors, dark, settings } = useApp();
+  const look = forumLook(forum.title, forum.id);
+  const ink = dark ? look.light : look.base;
   return (
-    <CardShell onPress={onPress}>
+    <CardShell onPress={onPress} accent={look.base} style={styles.forumCard}>
       <View style={styles.row}>
-        <View style={[styles.forumIcon, { backgroundColor: colors.primarySoft }]}>
-          <Ionicons name="library" size={22} color={colors.primary} />
-        </View>
+        <LinearGradient colors={[look.base, shade(look.base)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.forumIcon}>
+          <Ionicons name={look.icon} size={30 * settings.fontScale} color="#fff" />
+        </LinearGradient>
         <View style={styles.flex}>
-          <Txt size={21} bold>{forum.title}</Txt>
+          <Txt size={23} bold>{forum.title}</Txt>
           {forum.description ? (
             <Txt size={16} color={colors.muted} numberOfLines={2}>{forum.description}</Txt>
           ) : null}
         </View>
-        <Ionicons name="chevron-back" size={20} color={colors.muted} style={styles.chevron} />
+        <View style={[styles.chevronBox, { backgroundColor: look.base + (dark ? '33' : '14') }]}>
+          <Ionicons name="chevron-back" size={18} color={ink} />
+        </View>
       </View>
       {forum.threads ? (
         <View style={[styles.stats, styles.footer, { borderTopColor: colors.border }]}>
-          <Stat icon="document-text-outline">{`${forum.threads} موضوع`}</Stat>
-          <Stat icon="chatbubbles-outline">{`${forum.posts} مشاركة`}</Stat>
+          <Stat icon="document-text-outline" color={ink}>{`${forum.threads} موضوع`}</Stat>
+          <Stat icon="chatbubbles-outline" color={ink}>{`${forum.posts} مشاركة`}</Stat>
         </View>
       ) : null}
       {forum.subforums?.length ? (
         <View style={styles.pills}>
           {forum.subforums.map((s) => (
             <Pressable key={s.id} onPress={() => onSubPress?.(s)}>
-              <Pill icon="folder-open-outline" color={colors.accent} background={colors.accentSoft}>{s.title}</Pill>
+              <Pill icon="folder-open-outline" color={ink} background={look.base + (dark ? '33' : '14')}>{s.title}</Pill>
             </Pressable>
           ))}
         </View>
@@ -294,12 +311,12 @@ export function Pager({ page, lastPage, onChange }) {
   );
 }
 
-export function SectionHeader({ children }) {
+export function SectionHeader({ children, large }) {
   const { colors } = useApp();
   return (
-    <View style={styles.section}>
-      <View style={[styles.sectionBar, { backgroundColor: colors.gold }]} />
-      <Txt size={19} bold color={colors.primary} style={styles.flex}>{children}</Txt>
+    <View style={[styles.section, large && styles.sectionLarge]}>
+      <View style={[styles.sectionBar, { backgroundColor: colors.gold }, large && styles.sectionBarLarge]} />
+      <Txt size={large ? 22 : 19} bold color={colors.primary} style={styles.flex}>{children}</Txt>
     </View>
   );
 }
@@ -337,13 +354,16 @@ const styles = StyleSheet.create({
   pageNums: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 4 },
   pageNum: { minWidth: 30, paddingHorizontal: 6, borderRadius: 10, alignItems: 'center' },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  forumIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', marginTop: 4 },
-  chevron: { alignSelf: 'center' },
+  forumCard: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 20, marginVertical: 7 },
+  forumIcon: { width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', marginTop: 4 },
+  chevronBox: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   footer: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   pills: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   pill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 1, borderRadius: 999 },
   avatar: { alignItems: 'center', justifyContent: 'center' },
   section: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 20, marginBottom: 4, marginHorizontal: 16 },
   sectionBar: { width: 4, height: 22, borderRadius: 2 },
+  sectionLarge: { marginTop: 24, marginBottom: 6 },
+  sectionBarLarge: { width: 5, height: 28 },
   empty: { alignItems: 'center', marginTop: 70, paddingHorizontal: 30, gap: 10 },
 });
