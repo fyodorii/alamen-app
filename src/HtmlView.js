@@ -1,11 +1,20 @@
 // Shows a thread's HTML page. onMessage receives the page's {type, ...} messages.
+import { useEffect, useRef } from 'react';
 import { WebView } from 'react-native-webview';
 import { BASE_URL } from './api';
 import { Loading } from './ui';
 
-export default function HtmlView({ html, background, onMessage }) {
+// inject: {postIndex: html} added under posts after the page has loaded.
+export default function HtmlView({ html, background, onMessage, inject }) {
+  const view = useRef(null);
+  const send = () => {
+    if (inject && Object.keys(inject).length) view.current?.injectJavaScript(`window.__alamenInject(${JSON.stringify(inject)});true;`);
+  };
+  useEffect(send, [inject]);
   return (
     <WebView
+      ref={view}
+      onLoadEnd={send}
       originWhitelist={['*']}
       source={{ html, baseUrl: BASE_URL }}
       style={{ backgroundColor: background }}

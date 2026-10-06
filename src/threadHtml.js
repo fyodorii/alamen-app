@@ -32,7 +32,7 @@ const ICON_OPEN = svg('<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>');
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // A post's attachments: images as pictures, audio with a player, other files as cards.
-function attachmentsHtml(list) {
+export function attachmentsHtml(list) {
   if (!list?.length) return '';
   const items = list
     .map((a) => {
@@ -61,7 +61,7 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
     const n = firstNumber + i;
     const byOpener = opener && page === 1 && p.author === opener.author;
     return `
-      <article class="post${n === 1 ? ' opening' : ''}">
+      <article class="post${n === 1 ? ' opening' : ''}" data-i="${i}">
         <header>
           <span class="avatar" style="background:${av.color}">${esc(av.letter)}</span>
           <span class="who">
@@ -200,6 +200,18 @@ ${fontHead()}
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(data);
     else window.parent.postMessage({ alamen: data }, '*');
   }
+  // Attachments arrive after the posts (they need a second page from the forum):
+  // the app hands them in as {postIndex: html} and they go under their posts.
+  window.__alamenInject = function (map) {
+    Object.keys(map || {}).forEach(function (i) {
+      var post = document.querySelector('article.post[data-i="' + i + '"]');
+      if (!post || post.querySelector('.atts')) return;
+      post.querySelector('.content').insertAdjacentHTML('afterend', map[i]);
+    });
+  };
+  window.addEventListener('message', function (e) {
+    if (e.source === window.parent && e.data && e.data.alamenInject) window.__alamenInject(e.data.alamenInject);
+  });
   // A posted image that does not load (gone, or not a picture) shows as its link again.
   document.addEventListener('error', function (e) {
     var img = e.target;

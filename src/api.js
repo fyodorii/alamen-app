@@ -59,7 +59,28 @@ async function raceReaders(path) {
 const RECENT_MS = 60 * 1000;
 const recent = new Map(); // path -> {at, promise}
 
+// On the forum's own site (and in the iPhone app) pages come through the app's
+// forum.php, which keeps each one for a minute or two and sends it compressed;
+// the forum itself is the fallback (e.g. before forum.php is uploaded).
+const SITE_READER = onForumSite
+  ? new URL('forum.php', window.location.href).href
+  : Platform.OS !== 'web'
+    ? 'https://www.al-amen.com/app/forum.php'
+    : null;
+const SITE_READER_TIMEOUT_MS = 10000;
+
 async function fetchFresh(path) {
+  if (SITE_READER) {
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), SITE_READER_TIMEOUT_MS);
+    try {
+      return await readUrl(`${SITE_READER}?p=${encodeURIComponent(path)}`, stop.signal);
+    } catch {
+      return readUrl(BASE_URL + path);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   if (!preview) return readUrl(BASE_URL + path);
   try {
     return await raceReaders(path);
@@ -267,6 +288,20 @@ async function getAttachments(threadId, page) {
     });
 }
 
+// Attachments of one thread page, as {postIndex: [attachment, ...]}. Loaded after the
+// posts are on screen, since it needs a second (slow) page from the forum.
+export async function getThreadAttachments(threadId, page, posts) {
+  if (!posts.some((p) => p.attachmentCount)) return {};
+  const lists = await getAttachments(threadId, page);
+  // Only trust the pairing when both pages list the same number of posts.
+  if (lists.length !== posts.length) return {};
+  const byPost = {};
+  lists.forEach((list, i) => {
+    if (list.length) byPost[i] = list;
+  });
+  return byPost;
+}
+
 // One page of a thread, using vBulletin's lightweight print view.
 export async function getThread(threadId, page = 1) {
   const html = await fetchPage(`printthread.php?t=${threadId}&pp=${POSTS_PER_PAGE}&page=${page}`);
@@ -296,15 +331,6 @@ export async function getThread(threadId, page = 1) {
     });
   }
   if (!posts.length) throw new Error('لم يتم العثور على الموضوع أو أنه يحتاج إلى تسجيل الدخول');
-  if (posts.some((p) => p.attachmentCount)) {
-    try {
-      const lists = await getAttachments(threadId, page);
-      // Only trust the pairing when both pages list the same number of posts.
-      if (lists.length === posts.length) lists.forEach((list, i) => (posts[i].attachments = list));
-    } catch {
-      // The thread still reads fine without its attachments.
-    }
-  }
   return {
     title: title ? stripTags(title[1]) : '',
     posts,
