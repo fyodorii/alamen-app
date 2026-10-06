@@ -96,7 +96,7 @@ export default function HomeScreen({ navigation }) {
       ListHeaderComponent={Hero}
       ListFooterComponent={data ? null : <ActivityIndicator style={styles.loading} size="large" color={colors.primary} />}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={colors.primary} />}
-      renderSectionHeader={({ section }) => <SectionHeader>{section.title}</SectionHeader>}
+      renderSectionHeader={({ section }) => <SectionHeader large>{section.title}</SectionHeader>}
       renderItem={({ item }) => <ForumCard forum={item} onPress={() => openForum(item)} onSubPress={openForum} />}
     />
   );
