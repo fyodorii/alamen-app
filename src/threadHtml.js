@@ -1,6 +1,7 @@
 // Builds the HTML document shown in the thread reader (WebView on iOS, iframe on the web).
 import { Platform } from 'react-native';
 import { formatForumDate, POSTS_PER_PAGE } from './api';
+import { reportMailto } from './report';
 import { avatarFor } from './theme';
 
 // The web build serves its own small Amiri files (already cached by the app);
@@ -25,7 +26,10 @@ const ICON_FLAG = svg('<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>');
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldText, offline, baseUrl }) {
+export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldText, offline, baseUrl, url }) {
+  // Report buttons are real mailto: links, so the tap itself opens the mail app
+  // (Safari ignores mailto: opened later from a message the page sends).
+  const reportHref = (post) => esc(reportMailto({ title: thread.title, url, page, post }));
   const base = Math.round(21 * fontScale);
   const firstNumber = (page - 1) * POSTS_PER_PAGE + 1;
   const opener = thread.posts[0];
@@ -47,7 +51,7 @@ export function buildThreadHtml({ thread, page, colors, dark, fontScale, boldTex
         <div class="content">${p.html}</div>
         <footer>
           <a href="#" data-share="1" class="btn">${ICON_SHARE}<span>مشاركة</span></a>
-          <a href="#" data-report="${i}" class="btn report">${ICON_FLAG}<span>إبلاغ</span></a>
+          <a href="${reportHref(p)}" target="_top" data-report="${i}" class="btn report">${ICON_FLAG}<span>إبلاغ</span></a>
         </footer>
       </article>`;
   };
@@ -150,7 +154,7 @@ ${fontHead()}
   ${pager}
   <div class="end">
     <a href="#" data-share="1" class="share-all">${ICON_SHARE}<span>شارك هذا الموضوع</span></a>
-    <a href="#" data-report="topic" class="report-all">${ICON_FLAG}<span>إبلاغ</span></a>
+    <a href="${reportHref(null)}" target="_top" data-report="topic" class="report-all">${ICON_FLAG}<span>إبلاغ</span></a>
   </div>
 <script>
   // In the web build the page lives in an iframe instead of a native WebView.
@@ -163,7 +167,11 @@ ${fontHead()}
     var a = e.target.closest('a');
     if (!a) return;
     if (a.dataset.page) send({ type: 'page', page: +a.dataset.page });
-    else if (a.dataset.report) send({ type: 'report', index: a.dataset.report === 'topic' ? null : +a.dataset.report });
+    else if (a.dataset.report) {
+      // In the browser the mailto: link opens the mail app by itself.
+      if (!window.ReactNativeWebView) return;
+      send({ type: 'report', index: a.dataset.report === 'topic' ? null : +a.dataset.report });
+    }
     else if (a.dataset.share) send({ type: 'share' });
     else if (a.href && a.getAttribute('href').charAt(0) !== '#') send({ type: 'link', url: a.href });
     else return;

@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CONTACT_EMAIL } from './config';
 import { forumLook } from './forumStyle';
+import { mailtoUrl } from './report';
 import { useApp } from './store';
 import { avatarFor, font, rtl } from './theme';
 
@@ -14,11 +15,10 @@ export function notify(title, message) {
   else Alert.alert(title, message);
 }
 
-// Opens a new email to the site administration (reports and messages).
+// Opens an email (a mailto: URL) to the site administration.
 // On the web, opening mailto: in the same page hands it to the mail app; a new
 // window would stay blank in the home-screen app.
-export function openMail(subject = '', body = '') {
-  const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+export function openMail(url = mailtoUrl()) {
   if (Platform.OS === 'web') {
     window.location.href = url;
     return;

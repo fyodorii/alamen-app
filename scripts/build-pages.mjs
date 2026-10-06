@@ -8,6 +8,7 @@
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { versionFonts } from './version-fonts.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const BASE = (process.env.PAGES_BASE || '/alamen-app').replace(/\/$/, '');
@@ -32,6 +33,8 @@ try {
 } finally {
   for (const [path, text] of Object.entries(originals)) writeFileSync(path, text);
 }
+
+versionFonts(OUT);
 
 // GitHub Pages runs Jekyll by default, which drops folders starting with "_" (_expo).
 writeFileSync(join(OUT, '.nojekyll'), '');

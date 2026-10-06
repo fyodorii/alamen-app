@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BASE_URL, getThread, routeForLink, threadUrl } from '../api';
 import { useApp } from '../store';
+import { reportMailto } from '../report';
 import { buildThreadHtml } from '../threadHtml';
 import HtmlView from '../HtmlView';
 import ShareSheet from '../ShareSheet';
@@ -52,13 +53,7 @@ export default function ThreadScreen({ navigation, route }) {
   const report = useCallback(
     (index) => {
       const post = index != null ? thread?.posts[index] : null;
-      const title = thread?.title || route.params.title || '';
-      openMail(
-        post ? 'إبلاغ عن مشاركة في تطبيق شبكة الأمين' : 'إبلاغ عن موضوع في تطبيق شبكة الأمين',
-        `الموضوع: ${title}\n${threadUrl(id)}\n` +
-          (post ? `الصفحة: ${page}\nكاتب المشاركة: ${post.author} (${post.date})\n` : '') +
-          '\nسبب الإبلاغ:\n'
-      );
+      openMail(reportMailto({ title: thread?.title || route.params.title || '', url: threadUrl(id), page, post }));
     },
     [thread, id, page, route.params.title]
   );
@@ -115,8 +110,9 @@ export default function ThreadScreen({ navigation, route }) {
         boldText: settings.boldText,
         offline,
         baseUrl: BASE_URL,
+        url: threadUrl(id),
       }),
-    [thread, page, colors, dark, settings.fontScale, settings.boldText, offline]
+    [thread, page, colors, dark, settings.fontScale, settings.boldText, offline, id]
   );
 
   const onMessage = useCallback(

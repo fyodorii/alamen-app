@@ -2,7 +2,7 @@
 // - keeps the app's files on the device so it opens fast, even offline,
 // - shows push notifications sent by push/cron.php and opens the thread when one is tapped.
 
-const VERSION = 'v4';
+const VERSION = 'v5'; // a new version drops the old saved files (e.g. an old icon font)
 const PAGE_CACHE = `alamen-page-${VERSION}`;
 const FILE_CACHE = `alamen-files-${VERSION}`;
 const SCOPE = self.registration.scope; // https://…/app/

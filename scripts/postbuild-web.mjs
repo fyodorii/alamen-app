@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { crc32, deflateRawSync, gzipSync } from 'node:zlib';
+import { versionFonts } from './version-fonts.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const DIST = join(ROOT, 'dist');
@@ -119,6 +120,7 @@ for (const file of files(join(DIST, '_expo'))) {
   console.log(`${url}: ${Math.round(data.length / 1024)} KB -> ${Math.round(packed.length / 1024)} KB gzip`);
 }
 writeFileSync(indexFile, html);
+versionFonts(DIST);
 
 writeFileSync(join(DIST, '.htaccess'), HTACCESS);
 
