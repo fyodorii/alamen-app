@@ -223,31 +223,46 @@ export function Stat({ icon, children, color }) {
   );
 }
 
-// Used for thread lists, the latest feed and saved threads.
-export function ThreadCard({ title, preview, author, when, badge, sticky, replies, views, onPress, onLongPress }) {
-  const { colors, settings } = useApp();
+// Used for thread lists, the latest feed and saved threads. In a forum's list,
+// look (the forum's icon and color) tints the reply counter beside each thread.
+export function ThreadCard({ title, preview, author, when, badge, sticky, replies, views, look, onPress, onLongPress }) {
+  const { colors, dark, settings } = useApp();
+  const tint = look ? look.base + (dark ? '33' : '14') : colors.primarySoft;
+  const ink = look ? (dark ? look.light : look.base) : colors.primary;
   return (
-    <CardShell onPress={onPress} onLongPress={onLongPress} highlight={sticky}>
-      {badge ? (
-        <Txt size={13} bold color={colors.accent} numberOfLines={1}>{badge}</Txt>
-      ) : null}
-      <View style={styles.titleRow}>
-        {sticky ? <Ionicons name="pin" size={17 * settings.fontScale} color={colors.gold} style={styles.pin} /> : null}
-        <Txt size={19} bold numberOfLines={2} style={styles.flex}>{title}</Txt>
-      </View>
-      {preview ? (
-        <Txt size={15} color={colors.muted} numberOfLines={2}>{preview}</Txt>
-      ) : null}
-      <View style={[styles.row, styles.meta]}>
-        <Avatar name={author} size={26} />
+    <CardShell onPress={onPress} onLongPress={onLongPress} highlight={sticky} style={styles.threadCard}>
+      <View style={styles.threadRow}>
         <View style={styles.flex}>
-          <Txt size={14} numberOfLines={1}>
-            <Txt size={14} bold color={colors.primary}>{author}</Txt>
-            {when ? <Txt size={13} color={colors.muted}>{`  ·  ${when}`}</Txt> : null}
-          </Txt>
+          {badge || sticky ? (
+            <View style={styles.chips}>
+              {sticky ? <Pill icon="pin" color={colors.gold} background={colors.goldSoft}>مثبت</Pill> : null}
+              {badge ? <Pill icon="albums-outline" color={colors.accent} background={colors.accentSoft}>{badge}</Pill> : null}
+            </View>
+          ) : null}
+          <Txt size={19} bold numberOfLines={2}>{title}</Txt>
+          {preview ? (
+            <Txt size={15} color={colors.muted} numberOfLines={2}>{preview}</Txt>
+          ) : null}
+          <View style={[styles.row, styles.meta]}>
+            <Avatar name={author} size={24} />
+            <Txt size={14} numberOfLines={1} style={styles.flex}>
+              <Txt size={14} bold color={colors.primary}>{author}</Txt>
+              {when ? <Txt size={13} color={colors.muted}>{`  ·  ${when}`}</Txt> : null}
+            </Txt>
+          </View>
         </View>
-        {replies != null ? <Stat icon="chatbubble-outline">{replies}</Stat> : null}
-        {views ? <Stat icon="eye-outline">{views}</Stat> : null}
+        {replies != null ? (
+          <View style={[styles.counter, { backgroundColor: tint }]}>
+            <Txt size={21} bold color={ink} style={styles.centerText}>{replies}</Txt>
+            <Txt size={12} color={ink} style={[styles.centerText, styles.counterLabel]}>ردود</Txt>
+            {views ? (
+              <View style={[styles.counterViews, { borderTopColor: ink + '40' }]}>
+                <Ionicons name="eye-outline" size={12 * settings.fontScale} color={colors.muted} />
+                <Txt size={12} color={colors.muted} style={styles.centerText}>{views}</Txt>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </CardShell>
   );
@@ -268,7 +283,8 @@ function pageWindow(page, last) {
 
 // Previous / page numbers / next, for paged lists.
 export function Pager({ page, lastPage, onChange }) {
-  const { colors } = useApp();
+  const { colors, dark } = useApp();
+  const onPrimary = dark ? colors.bg : '#fff';
   if (lastPage <= 1) return null;
   const Arrow = ({ to, icon, label }) => {
     const off = to < 1 || to > lastPage;
@@ -279,9 +295,9 @@ export function Pager({ page, lastPage, onChange }) {
         style={[styles.pageArrow, { backgroundColor: off ? colors.border : colors.primary, opacity: off ? 0.5 : 1 }]}
         accessibilityLabel={label}
       >
-        {icon === 'chevron-forward' ? <Ionicons name={icon} size={16} color="#fff" /> : null}
-        <Txt size={14} bold color="#fff">{label}</Txt>
-        {icon === 'chevron-back' ? <Ionicons name={icon} size={16} color="#fff" /> : null}
+        {icon === 'chevron-forward' ? <Ionicons name={icon} size={16} color={off ? colors.muted : onPrimary} /> : null}
+        <Txt size={14} bold color={off ? colors.muted : onPrimary}>{label}</Txt>
+        {icon === 'chevron-back' ? <Ionicons name={icon} size={16} color={off ? colors.muted : onPrimary} /> : null}
       </Pressable>
     );
   };
@@ -343,8 +359,12 @@ const styles = StyleSheet.create({
   centerText: { textAlign: 'center' },
   btn: { paddingHorizontal: 26, paddingVertical: 6, borderRadius: 12 },
   card: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, ...shadow },
-  titleRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 6 },
-  pin: { marginTop: 9 },
+  threadCard: { paddingVertical: 12 },
+  threadRow: { flexDirection: 'row-reverse', alignItems: 'stretch', gap: 12 },
+  chips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 2 },
+  counter: { width: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
+  counterLabel: { marginTop: -6 },
+  counterViews: { flexDirection: 'row-reverse', alignItems: 'center', gap: 3, marginTop: 4, paddingTop: 2, borderTopWidth: StyleSheet.hairlineWidth, alignSelf: 'stretch', justifyContent: 'center' },
   meta: { marginTop: 6, gap: 8 },
   stats: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 16 },
   stat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },

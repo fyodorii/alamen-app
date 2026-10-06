@@ -200,6 +200,12 @@ ${fontHead()}
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(data);
     else window.parent.postMessage({ alamen: data }, '*');
   }
+  // A posted image that does not load (gone, or not a picture) shows as its link again.
+  document.addEventListener('error', function (e) {
+    var img = e.target;
+    if (img.tagName !== 'IMG' || !img.parentNode.classList.contains('imglink')) return;
+    img.parentNode.textContent = img.getAttribute('data-text') || img.src;
+  }, true);
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a');
     if (!a) return;

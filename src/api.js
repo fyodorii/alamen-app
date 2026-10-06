@@ -216,14 +216,16 @@ export async function getForum(forumId, page = 1) {
 
 // The print view turns posted images ([IMG]) into links whose text is the
 // (shortened) address; show those as images again. Links with real words stay links.
-const IMAGE_URL = /\.(jpe?g|png|gif|webp|bmp)(?:[?#&]|$)|\/picture\.php\?|\/emoji\.php\//i;
+// Forum attachments (attachment.php, here or on other forums) count too: [IMG] of
+// one shows its address; if it turns out not to be a picture, the page shows the link.
+const IMAGE_URL = /\.(jpe?g|png|gif|webp|bmp)(?:[?#&]|$)|\/picture\.php\?|\/emoji\.php\/|\/attachment\.php\?/i;
 
 function showImages(html) {
   return html.replace(/<a href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (link, href, text) => {
     const t = decodeEntities(text).trim();
     const looksLikeAddress = !t || /^(https?:\/\/|www\.)/i.test(t);
     if (!looksLikeAddress || !IMAGE_URL.test(decodeEntities(href))) return link;
-    return `<a href="${href}" class="imglink"><img src="${href}" loading="lazy" alt=""></a>`;
+    return `<a href="${href}" class="imglink"><img src="${href}" loading="lazy" alt="" data-text="${text}"></a>`;
   });
 }
 
