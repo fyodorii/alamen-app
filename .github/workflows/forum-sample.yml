@@ -1,0 +1,30 @@
+# Temporary: measures forum response times and checks the app icons as an
+# iPhone fetches them. Remove once done.
+name: Site check
+
+on:
+  push:
+    branches: [claude/admiring-archimedes-675hd0]
+    paths: [.github/workflows/forum-sample.yml]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Response times and icons
+        run: |
+          set +e
+          UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+          S=https://www.al-amen.com
+          t() { curl -sS -o /dev/null -A "$UA" -H 'Accept-Encoding: gzip' -w "%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s size=%{size_download} enc=%header{content-encoding}  $1\n" "$S/$1"; }
+          echo "== forum pages (twice each)"
+          for u in "vb/index.php?styleid=108" "vb/forumdisplay.php?f=4&pp=50&styleid=108" "vb/printthread.php?t=22815&pp=40&styleid=108" "vb/showthread.php?t=22815&pp=40&styleid=108" "vb/external.php?type=RSS2" "app/forum.php?p=index.php%3Fstyleid%3D108"; do t "$u"; t "$u"; done
+          echo "== app files"
+          for u in app/index.html app/manifest.webmanifest app/apple-touch-icon.png app/apple-touch-icon-167.png app/icon-192.png app/favicon.png apple-touch-icon.png apple-touch-icon-precomposed.png; do
+            curl -sS -o /dev/null -A "$UA" -w "%{http_code} type=%{content_type} size=%{size_download} redirect=%{redirect_url}  $u (no referer)\n" "$S/$u"
+          done
+          curl -sS -o /dev/null -A "$UA" -e "$S/app/index.html" -w "%{http_code} type=%{content_type} size=%{size_download}  app/apple-touch-icon.png (with referer)\n" "$S/app/apple-touch-icon.png"
+          echo "== icon links in the live index.html"
+          curl -sS -A "$UA" "$S/app/index.html" | grep -oE '<link rel="(apple-touch-icon|icon|manifest)"[^>]*>|<meta name="apple-mobile-web-app-[^>]*>'
+          echo "== server headers for index.html"
+          curl -sS -I -A "$UA" "$S/app/index.html" | head -15
