@@ -3,26 +3,50 @@ import { Platform } from 'react-native';
 import { decodeCp1256 } from './cp1256';
 
 // The web build on the forum's own domain reads the forum from the same origin.
-// Elsewhere (the GitHub Pages preview) browsers block cross-site reads, so it reads
-// through the app's forum.php on al-amen.com, which allows the preview's origin.
+// Elsewhere (the GitHub Pages preview) browsers block cross-site reads, so it tries
+// the app's forum.php on al-amen.com, then public CORS proxies (guest pages only).
 const FORUM_URL = 'https://www.al-amen.com/vb/';
 const onForumSite = Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.location.hostname);
 export const BASE_URL = onForumSite ? `${window.location.origin}/vb/` : FORUM_URL;
-const readUrl =
-  Platform.OS === 'web' && !onForumSite
-    ? (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`
-    : (path) => BASE_URL + path;
+const PREVIEW_READERS = [
+  (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`,
+  (path) => `https://api.allorigins.win/raw?url=${encodeURIComponent(FORUM_URL + path)}`,
+  (path) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(FORUM_URL + path)}`,
+];
+const readers = Platform.OS === 'web' && !onForumSite ? PREVIEW_READERS : [(path) => BASE_URL + path];
+let workingReader = 0; // the first reader that answered, tried first next time
 export const POSTS_PER_PAGE = 40;
 
+function hasReplacementChars(b) {
+  for (let i = 0; i + 2 < b.length; i++) {
+    if (b[i] === 0xef && b[i + 1] === 0xbf && b[i + 2] === 0xbd) return true;
+  }
+  return false;
+}
+
 async function fetchText(path) {
-  const res = await fetch(readUrl(path), {
-    headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
-    // No forum cookies in or out: the app reads as a guest, and the style choice
-    // below must not stick to the visitor's normal browsing of the forum.
-    credentials: Platform.OS === 'web' ? 'omit' : undefined,
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return decodeCp1256(await res.arrayBuffer());
+  let error;
+  for (let i = 0; i < readers.length; i++) {
+    const n = (workingReader + i) % readers.length;
+    try {
+      const res = await fetch(readers[n](path), {
+        headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
+        // No forum cookies in or out: the app reads as a guest, and the style choice
+        // below must not stick to the visitor's normal browsing of the forum.
+        credentials: Platform.OS === 'web' ? 'omit' : undefined,
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const bytes = await res.arrayBuffer();
+      // A proxy that re-read the windows-1256 page as UTF-8 leaves U+FFFD (EF BF BD) behind.
+      if (readers.length > 1 && hasReplacementChars(new Uint8Array(bytes))) throw new Error('garbled');
+      const text = decodeCp1256(bytes);
+      workingReader = n;
+      return text;
+    } catch (e) {
+      error = e;
+    }
+  }
+  throw error;
 }
 
 // vBulletin gives phones its "mobile style", whose pages the app cannot read, so ask
