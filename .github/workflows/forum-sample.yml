@@ -1,0 +1,30 @@
+# Temporary: prints the markup of two threads whose images and attachments
+# did not show in the app. Remove once done.
+name: Forum markup sample
+
+on:
+  push:
+    branches: [claude/admiring-archimedes-675hd0]
+    paths: [.github/workflows/forum-sample.yml]
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show both threads
+        run: |
+          set +e
+          UA="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
+          F=https://www.al-amen.com/vb
+          get() { curl -sS -A "$UA" "$F/$1" | iconv -f WINDOWS-1256 -t UTF-8 -c; }
+          for t in 21047 22815; do
+            echo "########## thread $t PRINT (posts)"
+            get "printthread.php?t=$t&pp=40&styleid=108" | sed -n '/<li class="postbit/,/<\/li>/p' | head -30 | cut -c1-600
+            echo "########## thread $t SHOW (li ids + attachments + images in posts)"
+            get "showthread.php?t=$t&pp=40&styleid=108" > s.html
+            grep -oE '<li[^>]*id="post_[0-9]+"' s.html | head -5
+            sed -n '/<div class="attachments">/,/<\/fieldset>/p' s.html | head -30 | cut -c1-600
+            sed -n '/<blockquote class="postcontent/,/<\/blockquote>/p' s.html | grep -oiE '<img[^>]*>|<a[^>]*attachment[^>]*>' | head -6 | cut -c1-400
+          done
+          echo "########## external attachment image"
+          curl -sS -o /dev/null -A "$UA" -w "http: status=%{http_code} type=%{content_type} size=%{size_download} redirect=%{redirect_url}\n" "http://www.ajurry.com/vb/attachment.php?attachmentid=1&d=1528573427"
