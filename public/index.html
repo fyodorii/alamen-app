@@ -55,6 +55,11 @@
         height: 100%;
         flex: 1;
       }
+      /* Fill the whole phone screen (the bar under the app included); the app
+         then sets the page color to its bottom bar's so no band shows below it. */
+      @supports (height: 100dvh) {
+        html, body { height: 100dvh; }
+      }
     </style>
 
     <!-- Splash shown until the app's code has loaded; React replaces it. -->

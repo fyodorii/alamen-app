@@ -54,8 +54,8 @@ function Tabs() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopWidth: 0,
-          height: 78 + insets.bottom,
-          paddingTop: 8,
+          height: 66 + insets.bottom,
+          paddingTop: 6,
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
           ...Platform.select({
@@ -97,6 +97,14 @@ function Root() {
       if (id) openThread(id);
     });
   }, []);
+
+  // Web: the page behind the app (seen below the bottom bar on iPhones) takes the
+  // bottom bar's color, so the app reads as one piece to the screen's edge.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !ready) return;
+    document.documentElement.style.backgroundColor = colors.card;
+    document.body.style.backgroundColor = colors.card;
+  }, [ready, colors.card]);
 
   // If the font fails to load, carry on with the system font rather than blocking the app.
   if (!ready || (!fontsLoaded && !fontError)) return <Loading />;
