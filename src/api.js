@@ -15,7 +15,7 @@ const PREVIEW_READERS = [
   (path) => `https://corsproxy.io/?url=${encodeURIComponent(FORUM_URL + path)}`,
 ];
 const preview = Platform.OS === 'web' && !onForumSite;
-const PREVIEW_TIMEOUT_MS = 20000;
+const PREVIEW_TIMEOUT_MS = 15000;
 export const POSTS_PER_PAGE = 40;
 export const THREADS_PER_PAGE = 50;
 
@@ -43,18 +43,44 @@ async function readUrl(url, signal) {
 
 // The preview asks every reader at once and takes the first good answer, so one
 // slow or dead proxy never leaves the app waiting.
-async function fetchText(path) {
-  if (!preview) return readUrl(BASE_URL + path);
+async function raceReaders(path) {
   const controllers = PREVIEW_READERS.map(() => new AbortController());
   const timer = setTimeout(() => controllers.forEach((c) => c.abort()), PREVIEW_TIMEOUT_MS);
   try {
     return await Promise.any(PREVIEW_READERS.map((reader, i) => readUrl(reader(path), controllers[i].signal)));
-  } catch (e) {
-    throw new Error('تعذّر تحميل المحتوى');
   } finally {
     clearTimeout(timer);
     controllers.forEach((c) => c.abort());
   }
+}
+
+// Recent answers are reused for a minute, and a page already being fetched is not
+// asked for twice (alerts and screens often want the same page at the same time).
+const RECENT_MS = 60 * 1000;
+const recent = new Map(); // path -> {at, promise}
+
+async function fetchFresh(path) {
+  if (!preview) return readUrl(BASE_URL + path);
+  try {
+    return await raceReaders(path);
+  } catch {
+    // Free proxies fail now and then; one more round before giving up.
+    try {
+      return await raceReaders(path);
+    } catch {
+      throw new Error('تعذّر تحميل المحتوى، الخادم بطيء الآن. حاول مرة أخرى.');
+    }
+  }
+}
+
+function fetchText(path) {
+  const hit = recent.get(path);
+  if (hit && Date.now() - hit.at < RECENT_MS) return hit.promise;
+  const promise = fetchFresh(path);
+  recent.set(path, { at: Date.now(), promise });
+  promise.catch(() => recent.delete(path));
+  if (recent.size > 50) recent.delete(recent.keys().next().value);
+  return promise;
 }
 
 // vBulletin gives phones its "mobile style", whose pages the app cannot read, so ask

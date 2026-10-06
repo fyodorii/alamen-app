@@ -13,7 +13,9 @@ const DEFAULT_SETTINGS = {
   theme: 'system',
   boldText: false, // show all reading text in Amiri Bold
   notifyNew: true, // alert when new topics are posted
-  salawat: true, // remind to send blessings on the Prophet ﷺ every 15 minutes
+  salawat: true, // remind to send blessings on the Prophet ﷺ every 10 minutes
+  repliesForum: null, // {id, title}: alert on new replies in this forum
+  sound: true, // play a soft chime with alerts
 };
 
 const AppContext = createContext(null);
