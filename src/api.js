@@ -17,6 +17,7 @@ const PREVIEW_READERS = [
 const preview = Platform.OS === 'web' && !onForumSite;
 const PREVIEW_TIMEOUT_MS = 20000;
 export const POSTS_PER_PAGE = 40;
+export const THREADS_PER_PAGE = 50;
 
 function hasReplacementChars(b) {
   for (let i = 0; i + 2 < b.length; i++) {
@@ -149,10 +150,12 @@ function lastPage(html, pattern) {
   return max;
 }
 
-// One page of a forum: its sub-forums (page 1 only) and its threads.
+// One page of a forum (THREADS_PER_PAGE threads): its sub-forums (page 1 only) and its threads.
 export async function getForum(forumId, page = 1) {
   // vBulletin redirects "&page=1" to the bare URL, so only send it for later pages.
-  const html = await fetchPage(`forumdisplay.php?f=${forumId}${page > 1 ? `&page=${page}` : ''}`);
+  const html = await fetchPage(
+    `forumdisplay.php?f=${forumId}&pp=${THREADS_PER_PAGE}${page > 1 ? `&page=${page}` : ''}`
+  );
   const title = html.match(/<title>([\s\S]*?)<\/title>/);
   const threads = [];
   const parts = html.split(/<li class="threadbit/).slice(1);
@@ -178,9 +181,10 @@ export async function getForum(forumId, page = 1) {
   const subforums = page === 1 ? parseForumRows(html) : [];
   return {
     title: title ? stripTags(title[1]).replace(/\s*-\s*شبكة الأمين السلفية\s*$/, '') : '',
+    page,
     subforums,
     threads,
-    lastPage: lastPage(html, `forumdisplay\\.php\\?f=${forumId}[^"]*?&amp;page=`),
+    lastPage: Math.max(page, lastPage(html, `forumdisplay\\.php\\?f=${forumId}[^"]*?&amp;page=`)),
   };
 }
 

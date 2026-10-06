@@ -3,12 +3,11 @@ import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BASE_URL, getThread, routeForLink, threadUrl } from '../api';
-import { CONTACT_EMAIL } from '../config';
 import { useApp } from '../store';
 import { buildThreadHtml } from '../threadHtml';
 import HtmlView from '../HtmlView';
 import ShareSheet from '../ShareSheet';
-import { ErrorView, Loading, notify } from '../ui';
+import { ErrorView, Loading, notify, openMail } from '../ui';
 
 // Offline copies keep at most this many pages so storage stays small.
 const MAX_SAVED_PAGES = 10;
@@ -49,6 +48,21 @@ export default function ThreadScreen({ navigation, route }) {
 
   const saved = isSaved(id);
 
+  // Reports go to the site administration by email: one post, or the whole topic.
+  const report = useCallback(
+    (index) => {
+      const post = index != null ? thread?.posts[index] : null;
+      const title = thread?.title || route.params.title || '';
+      openMail(
+        post ? 'إبلاغ عن مشاركة في تطبيق شبكة الأمين' : 'إبلاغ عن موضوع في تطبيق شبكة الأمين',
+        `الموضوع: ${title}\n${threadUrl(id)}\n` +
+          (post ? `الصفحة: ${page}\nكاتب المشاركة: ${post.author} (${post.date})\n` : '') +
+          '\nسبب الإبلاغ:\n'
+      );
+    },
+    [thread, id, page, route.params.title]
+  );
+
   const toggleSave = useCallback(async () => {
     if (saved) {
       await removeThread(id);
@@ -78,13 +92,16 @@ export default function ThreadScreen({ navigation, route }) {
           <Pressable hitSlop={10} onPress={toggleSave} disabled={saving} accessibilityLabel={saved ? 'إزالة من المحفوظات' : 'حفظ'}>
             <Ionicons name={saving ? 'hourglass-outline' : saved ? 'bookmark' : 'bookmark-outline'} size={23} color={colors.headerText} />
           </Pressable>
+          <Pressable hitSlop={10} onPress={() => report()} accessibilityLabel="إبلاغ عن الموضوع">
+            <Ionicons name="flag-outline" size={22} color={colors.headerText} />
+          </Pressable>
           <Pressable hitSlop={10} onPress={() => WebBrowser.openBrowserAsync(threadUrl(id))} accessibilityLabel="فتح في الموقع للرد">
             <Ionicons name="chatbubble-ellipses-outline" size={23} color={colors.headerText} />
           </Pressable>
         </View>
       ),
     });
-  }, [navigation, toggleSave, saving, saved, colors, id]);
+  }, [navigation, toggleSave, saving, saved, colors, id, report]);
 
   const html = useMemo(
     () =>
@@ -112,18 +129,9 @@ export default function ThreadScreen({ navigation, route }) {
         else if (/^https?:/i.test(msg.url)) WebBrowser.openBrowserAsync(msg.url);
         else Linking.openURL(msg.url).catch(() => {});
       }
-      if (msg.type === 'report') {
-        const post = thread.posts[msg.index];
-        const subject = encodeURIComponent('إبلاغ عن مشاركة في تطبيق شبكة الأمين');
-        const body = encodeURIComponent(
-          `الموضوع: ${thread.title}\n${threadUrl(id)}\nالصفحة: ${page}\nكاتب المشاركة: ${post.author} (${post.date})\n\nسبب الإبلاغ:\n`
-        );
-        Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
-          notify('الإبلاغ', `أرسل بلاغك إلى: ${CONTACT_EMAIL}`)
-        );
-      }
+      if (msg.type === 'report') report(msg.index);
     },
-    [thread, id, page, navigation]
+    [thread, id, page, navigation, report]
   );
 
   if (error) return <ErrorView error={error} onRetry={load} />;
@@ -145,5 +153,5 @@ export default function ThreadScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   // The web header gives headerRight no edge padding of its own.
-  actions: { flexDirection: 'row', gap: 18, alignItems: 'center', paddingEnd: Platform.OS === 'web' ? 16 : 0 },
+  actions: { flexDirection: 'row', gap: 16, alignItems: 'center', paddingEnd: Platform.OS === 'web' ? 16 : 0 },
 });

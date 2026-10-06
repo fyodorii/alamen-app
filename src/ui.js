@@ -1,7 +1,8 @@
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { CONTACT_EMAIL } from './config';
 import { useApp } from './store';
 import { avatarFor, font, rtl } from './theme';
 
@@ -9,6 +10,18 @@ import { avatarFor, font, rtl } from './theme';
 export function notify(title, message) {
   if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`);
   else Alert.alert(title, message);
+}
+
+// Opens a new email to the site administration (reports and messages).
+// On the web, opening mailto: in the same page hands it to the mail app; a new
+// window would stay blank in the home-screen app.
+export function openMail(subject = '', body = '') {
+  const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  if (Platform.OS === 'web') {
+    window.location.href = url;
+    return;
+  }
+  Linking.openURL(url).catch(() => notify('مراسلة الإدارة', `أرسل رسالتك إلى: ${CONTACT_EMAIL}`));
 }
 
 export function confirmDelete(title, message, onConfirm) {
@@ -163,9 +176,9 @@ export function ForumCard({ forum, onPress, onSubPress }) {
         <Ionicons name="chevron-back" size={20} color={colors.muted} style={styles.chevron} />
       </View>
       {forum.threads ? (
-        <View style={[styles.pills, styles.footer, { borderTopColor: colors.border }]}>
-          <Pill icon="document-text-outline">{`${forum.threads} موضوع`}</Pill>
-          <Pill icon="chatbubbles-outline">{`${forum.posts} مشاركة`}</Pill>
+        <View style={[styles.stats, styles.footer, { borderTopColor: colors.border }]}>
+          <Stat icon="document-text-outline">{`${forum.threads} موضوع`}</Stat>
+          <Stat icon="chatbubbles-outline">{`${forum.posts} مشاركة`}</Stat>
         </View>
       ) : null}
       {forum.subforums?.length ? (
@@ -181,31 +194,103 @@ export function ForumCard({ forum, onPress, onSubPress }) {
   );
 }
 
+// A small icon with a number or short text, without a background.
+export function Stat({ icon, children, color }) {
+  const { colors, settings } = useApp();
+  const c = color ?? colors.muted;
+  return (
+    <View style={styles.stat}>
+      <Txt size={14} color={c} style={styles.centerText}>{children}</Txt>
+      <Ionicons name={icon} size={14 * settings.fontScale} color={c} />
+    </View>
+  );
+}
+
 // Used for thread lists, the latest feed and saved threads.
 export function ThreadCard({ title, preview, author, when, badge, sticky, replies, views, onPress, onLongPress }) {
-  const { colors } = useApp();
+  const { colors, settings } = useApp();
   return (
     <CardShell onPress={onPress} onLongPress={onLongPress} highlight={sticky}>
-      {badge || sticky ? (
-        <View style={[styles.pills, { marginTop: 0, marginBottom: 6 }]}>
-          {sticky ? <Pill icon="pin" color={colors.gold} background={colors.goldSoft}>موضوع مثبت</Pill> : null}
-          {badge ? <Pill icon="albums-outline">{badge}</Pill> : null}
-        </View>
+      {badge ? (
+        <Txt size={13} bold color={colors.accent} numberOfLines={1}>{badge}</Txt>
       ) : null}
-      <Txt size={21} bold>{title}</Txt>
+      <View style={styles.titleRow}>
+        {sticky ? <Ionicons name="pin" size={17 * settings.fontScale} color={colors.gold} style={styles.pin} /> : null}
+        <Txt size={19} bold numberOfLines={2} style={styles.flex}>{title}</Txt>
+      </View>
       {preview ? (
-        <Txt size={16} color={colors.muted} numberOfLines={3} style={{ marginTop: 2 }}>{preview}</Txt>
+        <Txt size={15} color={colors.muted} numberOfLines={2}>{preview}</Txt>
       ) : null}
-      <View style={[styles.row, styles.footer, { borderTopColor: colors.border }]}>
-        <Avatar name={author} size={30} />
+      <View style={[styles.row, styles.meta]}>
+        <Avatar name={author} size={26} />
         <View style={styles.flex}>
-          <Txt size={15} bold color={colors.primary} numberOfLines={1}>{author}</Txt>
-          {when ? <Txt size={13} color={colors.muted}>{when}</Txt> : null}
+          <Txt size={14} numberOfLines={1}>
+            <Txt size={14} bold color={colors.primary}>{author}</Txt>
+            {when ? <Txt size={13} color={colors.muted}>{`  ·  ${when}`}</Txt> : null}
+          </Txt>
         </View>
-        {replies != null ? <Pill icon="chatbubble-outline">{replies}</Pill> : null}
-        {views ? <Pill icon="eye-outline" color={colors.muted} background={colors.bg}>{views}</Pill> : null}
+        {replies != null ? <Stat icon="chatbubble-outline">{replies}</Stat> : null}
+        {views ? <Stat icon="eye-outline">{views}</Stat> : null}
       </View>
     </CardShell>
+  );
+}
+
+// Page numbers around the current one: 1 … 4 5 [6] 7 8 … 20
+function pageWindow(page, last) {
+  const pages = new Set([1, last]);
+  for (let p = page - 2; p <= page + 2; p++) if (p > 1 && p < last) pages.add(p);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((p, i) => {
+    if (i && p - sorted[i - 1] > 1) out.push(`gap${p}`);
+    out.push(p);
+  });
+  return out;
+}
+
+// Previous / page numbers / next, for paged lists.
+export function Pager({ page, lastPage, onChange }) {
+  const { colors } = useApp();
+  if (lastPage <= 1) return null;
+  const Arrow = ({ to, icon, label }) => {
+    const off = to < 1 || to > lastPage;
+    return (
+      <Pressable
+        disabled={off}
+        onPress={() => onChange(to)}
+        style={[styles.pageArrow, { backgroundColor: off ? colors.border : colors.primary, opacity: off ? 0.5 : 1 }]}
+        accessibilityLabel={label}
+      >
+        {icon === 'chevron-forward' ? <Ionicons name={icon} size={16} color="#fff" /> : null}
+        <Txt size={14} bold color="#fff">{label}</Txt>
+        {icon === 'chevron-back' ? <Ionicons name={icon} size={16} color="#fff" /> : null}
+      </Pressable>
+    );
+  };
+  return (
+    <View style={[styles.pager, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.pagerRow}>
+        <Arrow to={page - 1} icon="chevron-forward" label="السابقة" />
+        <View style={styles.pageNums}>
+          {pageWindow(page, lastPage).map((p) =>
+            typeof p === 'string' ? (
+              <Txt key={p} size={14} color={colors.muted}>…</Txt>
+            ) : (
+              <Pressable
+                key={p}
+                onPress={() => p !== page && onChange(p)}
+                style={[styles.pageNum, { backgroundColor: p === page ? colors.gold : colors.primarySoft }]}
+              >
+                <Txt size={14} bold color={p === page ? '#fff' : colors.primary} style={styles.centerText}>{p}</Txt>
+              </Pressable>
+            )
+          )}
+        </View>
+        <Arrow to={page + 1} icon="chevron-back" label="التالية" />
+      </View>
+      <Txt size={13} color={colors.muted} style={styles.centerText}>{`الصفحة ${page} من ${lastPage}`}</Txt>
+    </View>
   );
 }
 
@@ -240,11 +325,21 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 6 },
   centerText: { textAlign: 'center' },
   btn: { paddingHorizontal: 26, paddingVertical: 6, borderRadius: 12 },
-  card: { marginHorizontal: 12, marginVertical: 6, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, ...shadow },
+  card: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, ...shadow },
+  titleRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 6 },
+  pin: { marginTop: 9 },
+  meta: { marginTop: 6, gap: 8 },
+  stats: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 16 },
+  stat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  pager: { marginHorizontal: 12, marginVertical: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, gap: 2, ...shadow },
+  pagerRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  pageArrow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 2, paddingHorizontal: 10, borderRadius: 12 },
+  pageNums: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 4 },
+  pageNum: { minWidth: 30, paddingHorizontal: 6, borderRadius: 10, alignItems: 'center' },
   row: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   forumIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', marginTop: 4 },
   chevron: { alignSelf: 'center' },
-  footer: { marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  footer: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   pills: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   pill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 1, borderRadius: 999 },
   avatar: { alignItems: 'center', justifyContent: 'center' },
