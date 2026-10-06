@@ -11,24 +11,34 @@ jobs:
   sample:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch recent threads and show image and attachment markup
+      - name: Show image and attachment markup
         run: |
+          set +e
           UA="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
           F=https://www.al-amen.com/vb
-          curl -sS -A "$UA" "$F/external.php?type=RSS2" | iconv -f WINDOWS-1256 -t UTF-8 > rss.xml || true
-          ids=$(grep -oE 'showthread\.php\?t=[0-9]+' rss.xml | grep -oE '[0-9]+' | sort -u | head -15)
-          echo "threads: $ids"
-          for t in $ids; do
-            curl -sS -A "$UA" "$F/printthread.php?t=$t&pp=40&styleid=108" | iconv -f WINDOWS-1256 -t UTF-8 > p$t.html || true
-            curl -sS -A "$UA" "$F/showthread.php?t=$t&styleid=108" | iconv -f WINDOWS-1256 -t UTF-8 > s$t.html || true
-            n=$(grep -coiE '<img|attachment' p$t.html || true)
-            echo "===== thread $t  print-matches=$n"
-            # Markup around images and attachments inside posts (not the page chrome).
-            sed -n '/<li class="postbit/,$p' p$t.html | grep -oiE '<(img|a)[^>]*(attach|\.jpe?g|\.png|\.gif|\.webp|\.pdf|\.mp3|\.zip|\.rar|\.docx?)[^>]*>[^<]{0,80}' | head -12
-            echo "----- showthread"
-            grep -oiE '<(img|a)[^>]*attachment[^>]*>[^<]{0,80}|<div class="attachments"|<fieldset class="postcontent"|class="attachments[^"]*"' s$t.html | head -12
+          get() { curl -sS -A "$UA" "$F/$1" | iconv -f WINDOWS-1256 -t UTF-8 -c; }
+          echo "===== attachments block, thread 23024 (showthread)"
+          get "showthread.php?t=23024&styleid=108" > s.html
+          sed -n '/<div class="attachments"/,/<\/fieldset>/p' s.html | head -40
+          echo "===== same thread, print version: post area"
+          get "printthread.php?t=23024&pp=40&styleid=108" > p.html
+          sed -n '/<li class="postbit/,/<\/li>/p' p.html | head -40
+          echo "===== guest download of attachment 2833"
+          curl -sS -o /dev/null -A "$UA" -w "status=%{http_code} type=%{content_type} size=%{size_download} redirect=%{redirect_url}\n" "$F/attachment.php?attachmentid=2833&d=1789624483"
+          curl -sS -o /dev/null -A "$UA" -e "https://fyodorii.github.io/" -w "github referer: status=%{http_code} type=%{content_type} size=%{size_download}\n" "$F/attachment.php?attachmentid=2833&d=1789624483"
+          echo "===== images inside posts in older threads"
+          found=0
+          for t in $(seq 22990 -7 21000); do
+            get "showthread.php?t=$t&styleid=108" > s$t.html
+            imgs=$(sed -n '/<blockquote class="postcontent/,/<\/blockquote>/p' s$t.html | grep -oiE '<img[^>]*>' | grep -viE 'smilies|images/(misc|buttons|statusicon|icons)' | head -4)
+            att=$(grep -oiE '<img[^>]*attachment\.php[^>]*>' s$t.html | head -3)
+            if [ -n "$imgs$att" ]; then
+              echo "--- thread $t showthread:"; echo "$imgs"; echo "$att"
+              get "printthread.php?t=$t&pp=40&styleid=108" > p$t.html
+              echo "--- thread $t printthread:"
+              sed -n '/<li class="postbit/,$p' p$t.html | grep -oiE '<img[^>]*>|<a[^>]*(attach|\.jpe?g|\.png|\.gif)[^>]*>[^<]{0,60}' | head -6
+              found=$((found+1))
+            fi
+            [ $found -ge 5 ] && break
           done
-          echo "===== attachment fetch as guest"
-          a=$(grep -ohE 'attachment\.php\?attachmentid=[0-9]+[^"]*' s*.html p*.html | head -1 | sed 's/&amp;/\&/g')
-          [ -n "$a" ] && curl -sS -o /dev/null -A "$UA" -w "status=%{http_code} type=%{content_type} size=%{size_download} redirect=%{redirect_url}\n" "$F/$a"
-          [ -n "$a" ] && curl -sS -o /dev/null -A "$UA" -e "https://fyodorii.github.io/" -w "with github referer: status=%{http_code} type=%{content_type} size=%{size_download}\n" "$F/$a"
+          echo "threads with images: $found"
