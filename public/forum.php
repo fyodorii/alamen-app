@@ -11,7 +11,7 @@ header('Access-Control-Allow-Origin: ' . PREVIEW_ORIGIN);
 header('Cache-Control: no-store');
 
 $path = isset($_GET['p']) ? (string) $_GET['p'] : '';
-if (!preg_match('~^(index|forumdisplay|printthread|external)\.php(\?[A-Za-z0-9_=&%.-]*)?$~', $path)) {
+if (!preg_match('~^(index|forumdisplay|printthread|showthread|external)\.php(\?[A-Za-z0-9_=&%.-]*)?$~', $path)) {
     http_response_code(400);
     exit;
 }
