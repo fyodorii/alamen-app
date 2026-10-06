@@ -10,11 +10,12 @@ const onForumSite = Platform.OS === 'web' && /(^|\.)al-amen\.com$/i.test(window.
 export const BASE_URL = onForumSite ? `${window.location.origin}/vb/` : FORUM_URL;
 const PREVIEW_READERS = [
   (path) => `https://www.al-amen.com/app/forum.php?p=${encodeURIComponent(path)}`,
-  (path) => `https://api.allorigins.win/raw?url=${encodeURIComponent(FORUM_URL + path)}`,
   (path) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(FORUM_URL + path)}`,
+  (path) => `https://api.allorigins.win/raw?url=${encodeURIComponent(FORUM_URL + path)}`,
+  (path) => `https://corsproxy.io/?url=${encodeURIComponent(FORUM_URL + path)}`,
 ];
-const readers = Platform.OS === 'web' && !onForumSite ? PREVIEW_READERS : [(path) => BASE_URL + path];
-let workingReader = 0; // the first reader that answered, tried first next time
+const preview = Platform.OS === 'web' && !onForumSite;
+const PREVIEW_TIMEOUT_MS = 20000;
 export const POSTS_PER_PAGE = 40;
 
 function hasReplacementChars(b) {
@@ -24,29 +25,35 @@ function hasReplacementChars(b) {
   return false;
 }
 
+async function readUrl(url, signal) {
+  const res = await fetch(url, {
+    headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
+    // No forum cookies in or out: the app reads as a guest, and the style choice
+    // below must not stick to the visitor's normal browsing of the forum.
+    credentials: Platform.OS === 'web' ? 'omit' : undefined,
+    signal,
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const bytes = await res.arrayBuffer();
+  // A proxy that re-read the windows-1256 page as UTF-8 leaves U+FFFD (EF BF BD) behind.
+  if (preview && hasReplacementChars(new Uint8Array(bytes))) throw new Error('garbled');
+  return decodeCp1256(bytes);
+}
+
+// The preview asks every reader at once and takes the first good answer, so one
+// slow or dead proxy never leaves the app waiting.
 async function fetchText(path) {
-  let error;
-  for (let i = 0; i < readers.length; i++) {
-    const n = (workingReader + i) % readers.length;
-    try {
-      const res = await fetch(readers[n](path), {
-        headers: Platform.OS === 'web' ? {} : { 'User-Agent': 'AlAmenApp/1.0 (iOS)' },
-        // No forum cookies in or out: the app reads as a guest, and the style choice
-        // below must not stick to the visitor's normal browsing of the forum.
-        credentials: Platform.OS === 'web' ? 'omit' : undefined,
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const bytes = await res.arrayBuffer();
-      // A proxy that re-read the windows-1256 page as UTF-8 leaves U+FFFD (EF BF BD) behind.
-      if (readers.length > 1 && hasReplacementChars(new Uint8Array(bytes))) throw new Error('garbled');
-      const text = decodeCp1256(bytes);
-      workingReader = n;
-      return text;
-    } catch (e) {
-      error = e;
-    }
+  if (!preview) return readUrl(BASE_URL + path);
+  const controllers = PREVIEW_READERS.map(() => new AbortController());
+  const timer = setTimeout(() => controllers.forEach((c) => c.abort()), PREVIEW_TIMEOUT_MS);
+  try {
+    return await Promise.any(PREVIEW_READERS.map((reader, i) => readUrl(reader(path), controllers[i].signal)));
+  } catch (e) {
+    throw new Error('تعذّر تحميل المحتوى');
+  } finally {
+    clearTimeout(timer);
+    controllers.forEach((c) => c.abort());
   }
-  throw error;
 }
 
 // vBulletin gives phones its "mobile style", whose pages the app cannot read, so ask
