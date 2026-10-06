@@ -1,7 +1,8 @@
 // Web version of HtmlView: the thread page is rendered in an iframe.
 import { useEffect, useRef } from 'react';
 
-export default function HtmlView({ html, background, onMessage }) {
+// inject: {postIndex: html} added under posts after the page has loaded.
+export default function HtmlView({ html, background, onMessage, inject }) {
   const frame = useRef(null);
   const handler = useRef(onMessage);
   handler.current = onMessage;
@@ -15,9 +16,15 @@ export default function HtmlView({ html, background, onMessage }) {
     return () => window.removeEventListener('message', listen);
   }, []);
 
+  const send = () => {
+    if (inject && Object.keys(inject).length) frame.current?.contentWindow?.postMessage({ alamenInject: inject }, '*');
+  };
+  useEffect(send, [inject]);
+
   return (
     <iframe
       ref={frame}
+      onLoad={send}
       srcDoc={html}
       title="thread"
       allow="autoplay; fullscreen; encrypted-media"

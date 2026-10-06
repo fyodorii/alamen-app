@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { BASE_URL, getThread, routeForLink, threadUrl } from '../api';
+import { BASE_URL, getThread, getThreadAttachments, routeForLink, threadUrl } from '../api';
 import { useApp } from '../store';
 import { reportMailto } from '../report';
-import { buildThreadHtml } from '../threadHtml';
+import { attachmentsHtml, buildThreadHtml } from '../threadHtml';
 import HtmlView from '../HtmlView';
 import ShareSheet from '../ShareSheet';
 import { ErrorView, Loading, notify, openMail } from '../ui';
@@ -22,6 +22,10 @@ export default function ThreadScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // Attachments by post index; they load after the posts are shown.
+  const [atts, setAtts] = useState({});
+  const attsRef = useRef({});
+  const loadId = useRef(0);
 
   const load = useCallback(async () => {
     setError(null);
@@ -30,9 +34,20 @@ export default function ThreadScreen({ navigation, route }) {
       const copy = await loadSavedThread(id);
       if (copy) return setThread(copy);
     }
+    const run = ++loadId.current;
+    attsRef.current = {};
+    setAtts({});
     try {
-      setThread(await getThread(id, page));
+      const fresh = await getThread(id, page);
+      setThread(fresh);
       setOffline(false);
+      getThreadAttachments(id, page, fresh.posts)
+        .then((found) => {
+          if (run !== loadId.current) return; // another page was opened meanwhile
+          attsRef.current = found;
+          setAtts(found);
+        })
+        .catch(() => {});
     } catch (e) {
       // No connection: fall back to the saved copy if there is one.
       const copy = page === 1 ? await loadSavedThread(id) : null;
@@ -67,7 +82,7 @@ export default function ThreadScreen({ navigation, route }) {
     try {
       // Save the whole thread (up to MAX_SAVED_PAGES pages) for offline reading.
       const first = page === 1 && thread && !offline ? thread : await getThread(id, 1);
-      const posts = [...first.posts];
+      const posts = first === thread ? first.posts.map((p, i) => ({ ...p, attachments: attsRef.current[i] ?? p.attachments ?? [] })) : [...first.posts];
       const last = Math.min(first.lastPage, MAX_SAVED_PAGES);
       for (let p = 2; p <= last; p++) posts.push(...(await getThread(id, p)).posts);
       await saveThread(id, { title: first.title, posts, lastPage: 1 });
@@ -102,7 +117,8 @@ export default function ThreadScreen({ navigation, route }) {
     () =>
       thread &&
       buildThreadHtml({
-        thread,
+        // Attachments already loaded stay when the page is rebuilt (e.g. a font change).
+        thread: { ...thread, posts: thread.posts.map((p, i) => ({ ...p, attachments: attsRef.current[i] ?? p.attachments ?? [] })) },
         page,
         colors,
         dark,
@@ -113,6 +129,11 @@ export default function ThreadScreen({ navigation, route }) {
         url: threadUrl(id),
       }),
     [thread, page, colors, dark, settings.fontScale, settings.boldText, offline, id]
+  );
+
+  const injectHtml = useMemo(
+    () => Object.fromEntries(Object.entries(atts).map(([i, list]) => [i, attachmentsHtml(list)])),
+    [atts]
   );
 
   const onMessage = useCallback(
@@ -135,7 +156,7 @@ export default function ThreadScreen({ navigation, route }) {
 
   return (
     <View style={styles.flex}>
-      <HtmlView html={html} background={colors.bg} onMessage={onMessage} />
+      <HtmlView html={html} background={colors.bg} onMessage={onMessage} inject={injectHtml} />
       <ShareSheet
         visible={sharing}
         title={thread.title || route.params.title || ''}

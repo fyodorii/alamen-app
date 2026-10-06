@@ -20,7 +20,7 @@ self.addEventListener('install', (event) => {
         if (!isAppPage(res)) return;
         const html = await res.clone().text();
         await (await caches.open(PAGE_CACHE)).put(PAGE_URL, res);
-        const urls = [...html.matchAll(/(?:src|href)="(\/app\/(?:_expo|fonts)\/[^"]+|\/app\/splash-logo\.png)"/g)].map((m) => m[1]);
+        const urls = [...html.matchAll(/(?:src|href)="(\/app\/(?:_expo|fonts)\/[^"]+|\/app\/splash-logo\.png[^"]*)"/g)].map((m) => m[1]);
         await (await caches.open(FILE_CACHE)).addAll(urls);
       } catch (e) {
         // Offline during install: files get cached as they are used instead.
