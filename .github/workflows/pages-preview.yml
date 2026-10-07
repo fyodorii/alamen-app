@@ -1,10 +1,11 @@
 # Publishes the web app to GitHub Pages as a preview: https://<owner>.github.io/<repo>/
+# and the Adhkar app at https://<owner>.github.io/<repo>/adhkar/
 # One-time setup: Settings → Pages → Source "Deploy from a branch" → gh-pages / (root).
 name: Web preview (GitHub Pages)
 
 on:
   push:
-    branches: [main, claude/admiring-archimedes-675hd0]
+    branches: [main, claude/admiring-archimedes-675hd0, claude/epic-shannon-pfin6u]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,11 @@ jobs:
         run: node scripts/build-pages.mjs
         env:
           PAGES_BASE: /${{ github.event.repository.name }}
+
+      - name: Add the Adhkar app (no build step; its PHP scripts run only on the site)
+        run: |
+          cp -r adhkar dist-pages/adhkar
+          rm -rf dist-pages/adhkar/push
 
       - name: Publish to the gh-pages branch
         working-directory: dist-pages
