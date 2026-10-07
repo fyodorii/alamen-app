@@ -1,8 +1,9 @@
 // Service worker: keeps the app on the device so it opens instantly and offline,
 // and shows the reminders that push/cron.php sends.
 
-const VERSION = 'v8'; // raise on every release (with APP_VERSION in js/config.js) so phones fetch the new files
+const VERSION = 'v13'; // raise on every release (with APP_VERSION in js/config.js) so phones fetch the new files
 const CACHE = `adhkar-${VERSION}`;
+const MUSHAF_CACHE = 'mushaf-fonts-v1'; // not named adhkar-…, so updates keep it
 const FILES = [
   './',
   'index.html',
@@ -14,6 +15,15 @@ const FILES = [
   'js/config.js',
   'js/daily-data.js',
   'js/khatma.js',
+  'js/hifz.js',
+  'js/occasions.js',
+  'js/mushaf/kahf.js',
+  'js/mushaf/mulk.js',
+  'js/mushaf/baqarah.js',
+  'js/sunnah.js',
+  'js/surahs/kahf.js',
+  'js/surahs/mulk.js',
+  'js/surahs/baqarah.js',
   'js/qailulah-data.js',
   'js/quran-data.js',
   'js/radio.js',
@@ -36,6 +46,9 @@ const FILES = [
   'js/views/qibla.js',
   'js/views/settings.js',
   'js/views/tools.js',
+  'js/views/hifz.js',
+  'js/views/calendar.js',
+  'js/views/surah.js',
   'js/views/worship.js',
   'fonts/plex-arabic-400.woff2',
   'fonts/plex-arabic-600.woff2',
@@ -53,6 +66,14 @@ const FILES = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  'icons/alt/emerald.png',
+  'icons/alt/night.png',
+  'icons/alt/violet.png',
+  'icons/alt/sky.png',
+  'icons/alt/parchment.png',
+  'icons/alt/black.png',
+  'icons/alt/burgundy.png',
+  'icons/alt/gold.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -80,6 +101,21 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== location.origin || url.pathname.includes('/push/')) return;
+  // The mushaf's page fonts never change: kept in their own cache across app updates and
+  // fetched once, only when their page is opened.
+  if (url.pathname.includes('/fonts/qpc/')) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(MUSHAF_CACHE);
+        const saved = await cache.match(request);
+        if (saved) return saved;
+        const res = await fetch(request);
+        if (res.ok) event.waitUntil(cache.put(request, res.clone()));
+        return res;
+      })()
+    );
+    return;
+  }
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);

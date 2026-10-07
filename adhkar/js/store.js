@@ -22,13 +22,23 @@ export const DEFAULTS = {
     fontText: 'amiri', // adhkar text: amiri | plex | tajawal
     fontUi: 'plex', // interface: plex | tajawal | amiri
     textBold: true,
+    uiBold: false,
     haptics: true,
     quranGoal: 5,
+    prayerLayout: 'list', // list | grid (the prayer times on the home screen)
+    appIcon: 'emerald', // icons/alt/<name>.png for the home screen
+    mushafMode: 'pages', // al-Kahf, al-Mulk, al-Baqarah: the mushaf's pages | continuous text
+    mushafInk: 'blue', // blue | black
     notify: {
       enabled: false,
       prayers: { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true },
+      // Minutes before each adhan for a heads-up (0 = only at the adhan); unset → `before`.
+      beforeBy: {},
       iqama: true,
       sunrise: false,
+      sunriseBefore: 0, // minutes before sunrise (0 = at sunrise), to catch Fajr in time
+      fajrInfo: false, // at a set hour (say 11 pm): when the coming Fajr and sunrise are
+      fajrInfoTime: '23:00',
       before: 10,
       morning: true,
       morningDelay: 30,
@@ -39,7 +49,11 @@ export const DEFAULTS = {
       lastThird: false,
       friday: true,
       fasting: false,
+      fastingTime: '21:00',
       whiteDays: false,
+      whiteDaysTime: '21:00',
+      occasions: false, // the evening before Ramadan, Arafah, Ashura and the other occasions
+      occasionsTime: '21:00',
       salawat: false,
       salawatHours: 3,
       worship: false,
@@ -64,16 +78,22 @@ export const DEFAULTS = {
   custom: [],
   notebook: [],
   saved: [],
-  tasbeeh: { phrase: 'سبحان الله', target: 33, count: 0, total: 0, day: '', today: 0, list: null, fontSize: 40 },
+  tasbeeh: { phrase: 'سبحان الله', target: 33, count: 0, total: 0, day: '', today: 0, list: null, fontSize: 40, counterSize: 1, bg: 'emerald', ink: '', dim: 0 },
   khatma: { page: 0, days: 30, start: '', done: 0, log: {} },
   radio: { station: 'saudi', custom: '' },
   seeded: 0,
   worship: {},
   worshipCustom: [],
   diary: {},
+  hifz: { on: false, day: 1, checks: {} },
+  migrated: {}, // one-time data changes done
+  surahs: {}, // kahf | mulk | baqarah → { ayah: where reading stopped, done: day finished }
   tools: { nap: 20, napEnd: 0, walk: null, focus: { minutes: 10, task: '', count: 0, total: 0, end: 0 } },
   sync: { hash: '', at: 0 },
 };
+
+// A copy of the defaults, so the state never shares objects with DEFAULTS.
+const fresh = () => JSON.parse(JSON.stringify(DEFAULTS));
 
 function merge(base, value) {
   if (Array.isArray(base)) return Array.isArray(value) ? value : base;
@@ -90,9 +110,9 @@ function merge(base, value) {
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    return merge(DEFAULTS, raw ? JSON.parse(raw) : {});
+    return merge(fresh(), raw ? JSON.parse(raw) : {});
   } catch (e) {
-    return merge(DEFAULTS, {});
+    return merge(fresh(), {});
   }
 }
 
@@ -109,6 +129,17 @@ const SEED = [
     ref: 'رواه البخاري',
   },
 ];
+// Istighfar was a «مائة مرة» checkbox (1) and is now a count: a ticked past day counts as 100.
+if (!state.migrated.istighfar) {
+  for (const day of Object.values(state.worship)) if (day && day.istighfar === 1) day.istighfar = 100;
+  state.migrated.istighfar = true;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch (e) {
+    /* private mode: nothing kept */
+  }
+}
+
 if (state.seeded < SEED_VERSION) {
   const have = new Set(state.custom.map((c) => c.text));
   const now = Date.now();
@@ -178,7 +209,7 @@ export function exportData() {
 export function importData(text) {
   const data = JSON.parse(text);
   if (!data || data.app !== 'adhkar') throw new Error('ليس ملف نسخة احتياطية من التطبيق');
-  const merged = merge(DEFAULTS, data);
+  const merged = merge(fresh(), data);
   for (const k of Object.keys(DEFAULTS)) state[k] = merged[k];
   state.sync = { hash: '', at: 0 };
   save();
