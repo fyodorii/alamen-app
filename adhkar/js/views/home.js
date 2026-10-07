@@ -5,7 +5,7 @@ import { wirdDone } from './adhkar.js';
 import { dailyFor } from '../daily-data.js';
 import { clock, clockText, countdown, gregText, hijriText, num, weekday } from '../dates.js';
 import { icon, PRAYER_ICONS } from '../icons.js';
-import { forbiddenTimes, METHODS, PRAYER_END, PRAYERS } from '../prayer.js';
+import { forbiddenTimes, iqamaTime, METHODS, PRAYER_END, PRAYERS } from '../prayer.js';
 import { syncSchedule } from '../push.js';
 import { save, state } from '../store.js';
 import { hoursAt, today } from '../today.js';
@@ -20,7 +20,10 @@ const QUICK = [
   ['#/ruqyah', 'الرقية', 'book', 'teal'],
   ['#/radio', 'الإذاعة', 'radio', 'indigo'],
   ['#/tasbeeh', 'السبحة', 'beads', 'amber'],
-  ['#/qibla', 'القبلة', 'compass', 'teal'],
+  ['#/qailulah', 'القيلولة', 'moon', 'teal'],
+  ['#/walk', 'المشي الياباني', 'stars', 'amber'],
+  ['#/focus', '١٠ دقائق', 'clock', 'rose'],
+  ['#/tools', 'الأدوات', 'widget', 'indigo'],
 ];
 
 // Rows under the five prayers: Duha, the middle of the night and its last third.
@@ -133,7 +136,11 @@ export function render(view) {
     tick() {
       const c2 = bigClock();
       const info2 = today();
-      if (info2.key !== info.key || info2.next.at !== info.next.at) return 'rerender';
+      // Redraw when the day, the next prayer, the running prayer or a forbidden time changes.
+      const same = (a, b) => (a && a.at) === (b && b.at);
+      if (info2.key !== info.key || info2.next.at !== info.next.at || !same(info2.current, info.current) || info2.forbidden?.key !== info.forbidden?.key) {
+        return 'rerender';
+      }
       $('[data-clock]', view).textContent = c2.time;
       $('[data-sec]', view).textContent = c2.sec;
       const p = $('[data-period]', view);
@@ -194,6 +201,7 @@ function prayerRow(info, k) {
   const passed = t.at <= Date.now() && !isNext && !isCurrent;
   const name = k === 'dhuhr' && info.isFriday ? 'الجمعة' : t.name;
   const c = clock(t.hours, s.clock24);
+  const iq = k !== 'sunrise' && s.iqama?.[k] ? iqamaTime(info.times, k, s.iqama) : null;
   const bell =
     k === 'sunrise'
       ? '<span class="bell-space"></span>'
@@ -201,7 +209,7 @@ function prayerRow(info, k) {
   return `<li class="prayer ${isNext ? 'next' : ''} ${isCurrent ? 'current' : ''} ${passed ? 'passed' : ''} ${k === 'sunrise' ? 'minor' : ''}">
     <span class="p-icon">${icon(PRAYER_ICONS[k], 20)}</span>
     <span class="p-name"><span>${name}${isNext ? '<em>القادمة</em>' : isCurrent ? '<em class="now">وقتها الآن</em>' : ''}</span><small class="p-end">${endLabel(info, k)}</small></span>
-    <span class="p-time">${c.time}<small>${c.period}</small></span>
+    <span class="p-time"><span>${c.time}<small>${c.period}</small></span>${iq ? `<small class="p-iqama">الإقامة ${clockText(iq.hours, s.clock24)}</small>` : ''}</span>
     ${bell}
   </li>`;
 }
@@ -249,7 +257,11 @@ function worshipCard(info) {
 function endsText(info) {
   const f = info.forbidden;
   const nahy = f ? `<span class="nahy">${icon('info', 15)} وقت نهي عن النافلة (${esc(f.name)}) حتى <b>${clockText(f.to.hours, state.settings.clock24)}</b></span>` : '';
-  return currentText(info) + nahy;
+  const q = info.iqama;
+  const iqama = q
+    ? `<span class="iqama">${icon('mosque', 15)} إقامة ${esc(q.name)} بعد <b>${countdown(q.at - Date.now())}</b> (${clockText(q.hours, state.settings.clock24)})</span>`
+    : '';
+  return iqama + currentText(info) + nahy;
 }
 
 function currentText(info) {
@@ -283,7 +295,7 @@ function khatmaCard(info) {
   return `<a class="card khatma-mini" href="#/quran">
     <span class="km-ring">${ring(k.page / PAGES, 52, 5)}<b>${num(Math.floor((k.page / PAGES) * 100))}٪</b></span>
     <span class="km-text"><b>${k.page >= PAGES ? 'أتممت الختمة' : p.done ? 'أتممت وردك اليوم ✓' : `وردك اليوم: ${num(p.size)} صفحة`}</b>
-      <small>${k.page >= PAGES ? 'تقبّل الله منك' : `من ص ${num(p.from)} (${esc(p.fromInfo.surahName)}) إلى ص ${num(p.to)} (${esc(p.toInfo.surahName)})`}</small></span>
+      <small>${k.page >= PAGES ? 'تقبّل الله منك' : p.hizb ? `الحزب ${num(p.hizb.n)}: ${esc(p.hizb.name)}` : `من ص ${num(p.from)} (${esc(p.fromInfo.surahName)}) إلى ص ${num(p.to)} (${esc(p.toInfo.surahName)})`}</small></span>
     ${icon('chevron', 18, 'muted')}</a>`;
 }
 

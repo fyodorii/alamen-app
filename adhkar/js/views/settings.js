@@ -3,11 +3,11 @@
 import { CITIES, nearestCity } from '../cities.js';
 import { clockText, countdown, gregText, hijri, HIJRI_MONTHS, hijriText, minutesText, num, weekday } from '../dates.js';
 import { icon } from '../icons.js';
-import { METHODS, PRAYER_NAMES } from '../prayer.js';
+import { iqamaTime, METHODS, PRAYER_NAMES } from '../prayer.js';
 import { disablePush, enablePush, isIOS, isStandalone, pushActive, pushSupported, sendTest, syncSchedule } from '../push.js';
 import { exportData, importData, save, state } from '../store.js';
 import { today } from '../today.js';
-import { $, $$, copyText, esc, openSheet, pageHeader, toast, toggle } from '../ui.js';
+import { $, copyText, esc, FONT_NAMES, FONTS, pageHeader, toast, toggle } from '../ui.js';
 import { widgetScript, WIDGET_STYLES } from '../widget.js';
 import { APP_VERSION } from '../config.js';
 import { dailyFor } from '../daily-data.js';
@@ -40,9 +40,19 @@ export function render(view) {
         <div class="seg-mini" data-theme>
           ${[['auto', 'تلقائي'], ['light', 'فاتح'], ['dark', 'داكن']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" data-v="${v}">${l}</button>`).join('')}
         </div></div>
+      <div class="row"><span class="row-icon">${icon('type', 20)}</span><span class="row-label">خط الأذكار</span>
+        <div class="seg-mini" data-font-text>
+          ${Object.entries(FONT_NAMES).map(([v, l]) => `<button class="${s.fontText === v ? 'on' : ''}" data-v="${v}" style="font-family:${FONTS[v].replaceAll('"', "'")}">${l}</button>`).join('')}
+        </div></div>
+      <div class="row"><span class="row-icon">${icon('type', 20)}</span><span class="row-label">خط عريض للأذكار</span>${toggle('textBold', s.textBold)}</div>
       <div class="row"><span class="row-icon">${icon('type', 20)}</span><span class="row-label">حجم خط الأذكار</span>
         <input type="range" min="0.85" max="1.5" step="0.05" value="${s.textScale}" data-scale></div>
       <p class="sample amiri" data-sample style="font-size:calc(1.3rem * ${s.textScale})">سبحان الله وبحمده، سبحان الله العظيم</p>
+      <div class="row"><span class="row-icon">${icon('palette', 20)}</span><span class="row-label">خط الواجهة</span>
+        <div class="seg-mini" data-font-ui>
+          ${Object.entries(FONT_NAMES).map(([v, l]) => `<button class="${s.fontUi === v ? 'on' : ''}" data-v="${v}" style="font-family:${FONTS[v].replaceAll('"', "'")}">${l}</button>`).join('')}
+        </div></div>
+      <p class="hint">آيات القرآن تبقى بخط مصحف المدينة.</p>
       <div class="row"><span class="row-icon">${icon('clock', 20)}</span><span class="row-label">نظام ٢٤ ساعة</span>${toggle('clock24', s.clock24)}</div>
       <div class="row"><span class="row-icon">${icon('type', 20)}</span><span class="row-label">الأرقام العربية (١٢٣)</span>${toggle('digits', s.digits === 'arab')}</div>
       <div class="row"><span class="row-icon">${icon('calendar', 20)}</span><span class="row-label">تعديل التاريخ الهجري</span>
@@ -69,6 +79,7 @@ export function render(view) {
     if (t.name === 'clock24') s.clock24 = t.checked;
     if (t.name === 'digits') s.digits = t.checked ? 'arab' : 'latn';
     if (t.name === 'haptics') s.haptics = t.checked;
+    if (t.name === 'textBold') s.textBold = t.checked;
     if (t.matches('[data-scale]')) s.textScale = Number(t.value);
     if (t.matches('[data-import]') && t.files[0]) {
       t.files[0].text().then((text) => {
@@ -93,6 +104,13 @@ export function render(view) {
     if (e.target.matches('[data-scale]')) $('[data-sample]', view).style.fontSize = `calc(1.3rem * ${e.target.value})`;
   };
   const onClick = (e) => {
+    const ft = e.target.closest('[data-font-text] [data-v], [data-font-ui] [data-v]');
+    if (ft) {
+      if (ft.closest('[data-font-text]')) s.fontText = ft.dataset.v;
+      else s.fontUi = ft.dataset.v;
+      save();
+      return render(view);
+    }
     const th = e.target.closest('[data-theme] [data-v]');
     if (th) {
       s.theme = th.dataset.v;
@@ -258,6 +276,16 @@ export function renderMethod(view) {
           )
           .join('')}
         <p class="hint">استعمله ليطابق التطبيق تقويم مسجدك أو وزارة الأوقاف في بلدك.</p>
+      </div>
+      <div class="group">
+        <h4>الإقامة (دقائق بعد الأذان)</h4>
+        ${['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']
+          .map(
+            (k) => `<div class="row"><span class="row-label">${PRAYER_NAMES[k]}<small>الإقامة ${clockText(iqamaTime(t, k, s.iqama).hours, s.clock24)}</small></span>
+              <div class="stepper" data-iq="${k}"><button data-d="-1">−</button><b>${num(s.iqama[k])}</b><button data-d="1">+</button></div></div>`
+          )
+          .join('')}
+        <p class="hint">عدّلها لتوافق إقامة مسجدك. ويصلك تنبيه عند الإقامة من إعدادات الإشعارات.</p>
       </div>`;
   };
   draw();
@@ -271,7 +299,12 @@ export function renderMethod(view) {
       const k = o.closest('[data-off]').dataset.off;
       s.offsets[k] = Math.max(-30, Math.min(30, s.offsets[k] + Number(o.dataset.d)));
     }
-    if (m || a || o) {
+    const q = e.target.closest('[data-iq] [data-d]');
+    if (q) {
+      const k = q.closest('[data-iq]').dataset.iq;
+      s.iqama[k] = Math.max(0, Math.min(60, s.iqama[k] + Number(q.dataset.d)));
+    }
+    if (m || a || o || q) {
       save();
       syncSchedule();
       const y = window.scrollY;
@@ -317,6 +350,7 @@ export function renderNotify(view) {
           .map((k) => `<div class="row"><span class="row-label">${PRAYER_NAMES[k]}</span>${toggle('p-' + k, n.prayers[k])}</div>`)
           .join('')}
         <div class="row"><span class="row-label">الشروق<small>نهاية وقت الفجر</small></span>${toggle('sunrise', n.sunrise)}</div>
+        <div class="row"><span class="row-label">الإقامة<small>${['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'].map((k) => `${PRAYER_NAMES[k]} ${num(s.iqama[k])}`).join(' • ')} دقيقة — <a class="link" href="#/settings/method">تعديل</a></small></span>${toggle('iqama', n.iqama)}</div>
         <div class="row"><span class="row-label">تنبيه قبل الأذان</span>${select('before', BEFORE, n.before, (v) => (v ? `قبل ${minutesText(v)}` : 'بلا تنبيه'))}</div>
         <div class="row"><span class="row-label">تنبيه بعد الأذان<small>«هل صليت؟» وأذكار ما بعد الصلاة</small></span>${select('afterAdhan', BEFORE, n.afterAdhan, (v) => (v ? `بعد ${minutesText(v)}` : 'بلا تنبيه'))}</div>
         <div class="row"><span class="row-label">خروج وقت الصلاة<small>قبل أن ينتهي وقت كل صلاة</small></span>${select('prayerEnd', [0, 10, 15, 20, 30, 45, 60], n.prayerEnd, (v) => (v ? `قبل ${minutesText(v)}` : 'بلا تنبيه'))}</div>
@@ -327,6 +361,7 @@ export function renderNotify(view) {
         <div class="row"><span class="row-label">صلاة الضحى</span>${toggle('duha', n.duha)}</div>
         ${n.duha ? `<div class="row sub"><span class="row-label">بعد الشروق بـ</span>${select('duhaDelay', [15, 30, 60, 90, 120, 180], n.duhaDelay, (v) => (v >= 60 ? (v === 60 ? 'ساعة' : v === 120 ? 'ساعتين' : v === 180 ? '٣ ساعات' : 'ساعة ونصف') : minutesText(v)))}</div>` : ''}
         <div class="row"><span class="row-label">منتصف الليل<small>آخر وقت العشاء</small></span>${toggle('midnight', n.midnight)}</div>
+        <div class="row"><span class="row-label">القيلولة<small>عند بدء الساعة السادسة قبل الزوال</small></span>${toggle('qailulah', n.qailulah)}</div>
         <div class="row"><span class="row-label">وقت النهي قبل الظهر<small>عند قيام الشمس، قبل الظهر بـ١٠ دقائق</small></span>${toggle('nahy', n.nahy)}</div>
         <div class="row"><span class="row-label">الثلث الأخير من الليل<small>لقيام الليل والدعاء</small></span>${toggle('lastThird', n.lastThird)}</div>
       </div>

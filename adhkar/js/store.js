@@ -12,16 +12,22 @@ export const DEFAULTS = {
     method: 'umm_al_qura',
     asr: 1,
     offsets: { fajr: 0, sunrise: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
+    // Minutes from the adhan to the iqama.
+    iqama: { fajr: 25, dhuhr: 20, asr: 20, maghrib: 10, isha: 20 },
     hijriAdjust: 0,
     clock24: false,
     digits: 'arab',
     theme: 'auto',
     textScale: 1,
+    fontText: 'amiri', // adhkar text: amiri | plex | tajawal
+    fontUi: 'plex', // interface: plex | tajawal | amiri
+    textBold: true,
     haptics: true,
     quranGoal: 5,
     notify: {
       enabled: false,
       prayers: { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true },
+      iqama: true,
       sunrise: false,
       before: 10,
       morning: true,
@@ -43,6 +49,7 @@ export const DEFAULTS = {
       midnight: false,
       prayerEnd: 0,
       nahy: false,
+      qailulah: false,
       kahf: true,
       kahfTime: '09:00',
       mulk: false,
@@ -64,6 +71,7 @@ export const DEFAULTS = {
   worship: {},
   worshipCustom: [],
   diary: {},
+  tools: { nap: 20, napEnd: 0, walk: null, focus: { minutes: 10, task: '', count: 0, total: 0, end: 0 } },
   sync: { hash: '', at: 0 },
 };
 

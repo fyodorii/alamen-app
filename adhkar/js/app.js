@@ -2,6 +2,7 @@
 // shown inside the app while it is open.
 
 import { setDigits } from './dates.js';
+import { FONTS } from './ui.js';
 import { icon } from './icons.js';
 import { checkForUpdate, isIOS, isStandalone, onNotificationOpen, registerServiceWorker, syncSchedule } from './push.js';
 import { buildSchedule } from './schedule.js';
@@ -14,6 +15,8 @@ import * as notebook from './views/notebook.js';
 import * as settings from './views/settings.js';
 import * as worship from './views/worship.js';
 import * as quran from './views/quran.js';
+import * as tools from './views/tools.js';
+import { anyTimerRunning, checkTimers, keepAwake } from './timers.js';
 import { onRadio, radioStatus, stop as stopRadio, toggle as toggleRadio } from './radio.js';
 
 const TABS = [
@@ -36,6 +39,10 @@ const ROUTES = [
   [/^#\/tasbeeh$/, 'tasbeeh', (v) => adhkar.renderTasbeeh(v)],
   [/^#\/worship$/, 'worship', (v) => worship.render(v)],
   [/^#\/qibla$/, 'qibla', (v) => qibla.render(v)],
+  [/^#\/tools$/, 'tools', (v) => tools.renderTools(v)],
+  [/^#\/qailulah$/, 'tools', (v) => tools.renderQailulah(v)],
+  [/^#\/walk$/, 'tools', (v) => tools.renderWalk(v)],
+  [/^#\/focus$/, 'tools', (v) => tools.renderFocus(v)],
   [/^#\/notebook(?:\/(saved))?$/, 'mine', (v, tab) => notebook.render(v, tab)],
   [/^#\/settings$/, 'settings', (v) => settings.render(v)],
   [/^#\/settings\/location$/, 'settings', (v) => settings.renderLocation(v)],
@@ -84,6 +91,11 @@ function applyTheme() {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#08201d' : '#0b3b34');
   setDigits(state.settings.digits);
+  const s = state.settings;
+  const root = document.documentElement.style;
+  root.setProperty('--font-text', FONTS[s.fontText] || FONTS.amiri);
+  root.setProperty('--font-ui', FONTS[s.fontUi] || FONTS.plex);
+  root.setProperty('--text-weight', s.textBold ? '700' : '400');
 }
 media.addEventListener?.('change', applyTheme);
 
@@ -190,6 +202,7 @@ onChange(() => {
 
 setInterval(() => {
   if (document.visibilityState !== 'visible') return;
+  checkTimers();
   if (current?.tick?.() === 'rerender') route();
 }, 1000);
 
@@ -199,6 +212,9 @@ document.addEventListener('visibilitychange', () => {
   syncSchedule();
   scheduleInApp();
   checkForUpdate();
+  checkTimers();
+  // The screen lock is dropped when the app is hidden; take it again for a running timer.
+  if (anyTimerRunning()) keepAwake(true);
 });
 
 registerServiceWorker();
