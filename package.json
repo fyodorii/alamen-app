@@ -34,7 +34,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export --platform web && node scripts/postbuild-web.mjs",
-    "fonts:web": "python scripts/build_web_fonts.py"
+    "fonts:web": "python scripts/build_web_fonts.py",
+    "zip:adhkar": "node scripts/zip-adhkar.mjs"
   },
   "private": true
 }
