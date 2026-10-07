@@ -47,9 +47,3 @@ public/push/data/*.lock
 
 # Web build output
 alamen-web-app.zip
-
-# Adhkar app: notification data created on the server
-adhkar/push/data/*.json
-adhkar/push/data/*.lock
-adhkar/push/data/subs/
-adhkar-web-app.zip
