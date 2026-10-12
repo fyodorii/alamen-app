@@ -1,0 +1,35 @@
+{
+  "name": "alamen-windows",
+  "productName": "شبكة الأمين السلفية",
+  "version": "1.0.0",
+  "description": "شبكة الأمين السلفية — تطبيق ويندوز",
+  "author": "شبكة الأمين السلفية",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.alamen.salafi",
+    "productName": "شبكة الأمين السلفية",
+    "artifactName": "alamen-${version}-${arch}-${target}.${ext}",
+    "files": ["main.js", "offline.html", "icon.png"],
+    "directories": { "output": "dist" },
+    "win": {
+      "icon": "icon.png",
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "شبكة الأمين السلفية"
+    }
+  }
+}
